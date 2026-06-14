@@ -17,10 +17,12 @@ class ArchitectureAgent:
         llm_client: ILLMClient | None = None,
         prompt_path: str = "src/infrastructure/prompts/architecture_agent.txt",
         target_structure_path: str = "configs/target_structure.yaml",
+        user_feedback: str | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._prompt_path = prompt_path
         self._target_structure_path = target_structure_path
+        self._user_feedback = user_feedback.strip() if user_feedback else None
 
     def plan(self, notebook_analysis: dict[str, Any]) -> dict[str, Any]:
         """Return architecture JSON with module contracts."""
@@ -92,9 +94,12 @@ class ArchitectureAgent:
         prompt_template = Path(self._prompt_path).read_text(encoding="utf-8")
         target_structure = Path(self._target_structure_path).read_text(encoding="utf-8")
         notebook_analysis_json = json.dumps(notebook_analysis, ensure_ascii=True)
+        feedback_block = ""
+        if self._user_feedback:
+            feedback_block = f"\n\nUser feedback:\n{self._user_feedback}"
         return (
             f"{prompt_template}\n\nTarget structure YAML:\n{target_structure}\n\n"
-            f"Notebook analysis JSON:\n{notebook_analysis_json}"
+            f"Notebook analysis JSON:\n{notebook_analysis_json}{feedback_block}"
         )
 
     def _is_valid_plan(self, payload: Any) -> bool:

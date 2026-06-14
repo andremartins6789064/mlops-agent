@@ -17,9 +17,15 @@ class CodeGeneratorAgent:
         *,
         llm_client: ILLMClient | None = None,
         prompt_path: str = "src/infrastructure/prompts/code_generator.txt",
+        stage_feedback: dict[str, str] | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._prompt_path = prompt_path
+        self._stage_feedback = {
+            key: value.strip()
+            for key, value in (stage_feedback or {}).items()
+            if value.strip()
+        }
 
     def generate_modules(
         self,
@@ -119,6 +125,13 @@ class CodeGeneratorAgent:
             ]
 
         header = f'"""{module_name}.py\nGenerated automatically by mlops-agent.\n"""\n'
+        feedback_note = self._stage_feedback.get(module_name)
+        if feedback_note:
+            header = (
+                f'"""{module_name}.py\nGenerated automatically by mlops-agent.\n'
+                f"User feedback: {feedback_note}\n"
+                '"""\n'
+            )
         return f"{header}\n{imports}\n\n" + "\n\n".join(function_blocks) + "\n"
 
     def _build_prompt(
@@ -135,6 +148,7 @@ class CodeGeneratorAgent:
             "notebook_path": notebook.path,
             "cells_by_pipeline": notebook_analysis.get("cells_by_pipeline", {}),
             "module_plan": architecture_plan.get("modules", {}).get(module_name, {}),
+            "stage_feedback": self._stage_feedback.get(module_name),
         }
         return f"{prompt_template}\n\nGeneration context JSON:\n{json.dumps(payload)}"
 
