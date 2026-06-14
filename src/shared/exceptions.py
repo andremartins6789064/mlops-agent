@@ -8,3 +8,7 @@ class NotebookFileNotFoundError(MlopsAgentError):
 
 class NotebookParsingError(MlopsAgentError):
     """Raised when notebook parsing fails."""
+
+
+class LLMClientError(MlopsAgentError):
+    """Raised when LLM communication fails."""
