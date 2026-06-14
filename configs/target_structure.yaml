@@ -1,0 +1,22 @@
+project_name: "{{ project_name }}"
+structure:
+  - src:
+      - feature_engineering.py
+      - training.py
+      - inference.py
+      - evaluation.py
+  - tests:
+      - test_feature_engineering.py
+      - test_training.py
+      - test_inference.py
+      - test_evaluation.py
+  - requirements.txt
+  - pyproject.toml
+  - README.md
+conventions:
+  language: python
+  version: "3.11"
+  style: PEP8
+  type_hints: required
+  docstrings: required
+  test_coverage_min: 80
