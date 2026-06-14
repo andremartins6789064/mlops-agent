@@ -1,0 +1,45 @@
+### version information
+
+```
+pre-commit version: 4.6.0
+git --version: git version 2.43.0
+sys.version:
+    3.11.15 (main, Jun 11 2026, 04:03:40) [Clang 22.1.3 ]
+sys.executable: /home/andre/Documents/projetos/mlops-agent/.venv/bin/python3
+os.name: posix
+sys.platform: linux
+```
+
+### error information
+
+```
+An unexpected error has occurred: CalledProcessError: command: ('/home/andre/Documents/projetos/mlops-agent/.venv/bin/python3', '-mvirtualenv', '/home/andre/Documents/projetos/mlops-agent/.pre-commit-cache/repo1d3e7gog/py_env-python3.11')
+return code: 1
+stdout:
+    PermissionError: [Errno 13] Permission denied: '/home/andre/.cache/virtualenv/py_info/5/edc40091ba61a47c19020caddb4fd6e4b08d985c249078060db5c62b4b03fc89.lock'
+stderr: (none)
+```
+
+```
+Traceback (most recent call last):
+  File "/home/andre/Documents/projetos/mlops-agent/.venv/lib/python3.11/site-packages/pre_commit/error_handler.py", line 73, in error_handler
+    yield
+  File "/home/andre/Documents/projetos/mlops-agent/.venv/lib/python3.11/site-packages/pre_commit/main.py", line 429, in main
+    return run(args.config, store, args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/andre/Documents/projetos/mlops-agent/.venv/lib/python3.11/site-packages/pre_commit/commands/run.py", line 443, in run
+    install_hook_envs(to_install, store)
+  File "/home/andre/Documents/projetos/mlops-agent/.venv/lib/python3.11/site-packages/pre_commit/repository.py", line 229, in install_hook_envs
+    _hook_install(hook)
+  File "/home/andre/Documents/projetos/mlops-agent/.venv/lib/python3.11/site-packages/pre_commit/repository.py", line 85, in _hook_install
+    lang.install_environment(
+  File "/home/andre/Documents/projetos/mlops-agent/.venv/lib/python3.11/site-packages/pre_commit/languages/python.py", line 226, in install_environment
+    cmd_output_b(*venv_cmd, cwd='/')
+  File "/home/andre/Documents/projetos/mlops-agent/.venv/lib/python3.11/site-packages/pre_commit/util.py", line 111, in cmd_output_b
+    raise CalledProcessError(returncode, cmd, stdout_b, stderr_b)
+pre_commit.util.CalledProcessError: command: ('/home/andre/Documents/projetos/mlops-agent/.venv/bin/python3', '-mvirtualenv', '/home/andre/Documents/projetos/mlops-agent/.pre-commit-cache/repo1d3e7gog/py_env-python3.11')
+return code: 1
+stdout:
+    PermissionError: [Errno 13] Permission denied: '/home/andre/.cache/virtualenv/py_info/5/edc40091ba61a47c19020caddb4fd6e4b08d985c249078060db5c62b4b03fc89.lock'
+stderr: (none)
+```
