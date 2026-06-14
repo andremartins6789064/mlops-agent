@@ -27,3 +27,4 @@ htmlcov/
 
 # Projeto
 output/
+.pre-commit-cache/
