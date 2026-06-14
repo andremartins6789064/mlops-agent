@@ -6,6 +6,9 @@ from src.agents.architecture_agent import ArchitectureAgent
 from src.agents.code_generator import CodeGeneratorAgent
 from src.agents.notebook_analyzer import NotebookAnalyzerAgent
 from src.agents.orchestrator import Orchestrator
+from src.agents.reviewer import ReviewerAgent
+from src.agents.test_generator import PipelineTestGeneratorAgent
+from src.application.validate_output import ValidationResult
 from src.domain.entities import PipelineType
 from src.infrastructure.parsers.notebook_parser import NotebookParser
 
@@ -80,3 +83,59 @@ def test_orchestrator_generates_stage_modules(tmp_path: Path) -> None:
     }
     for stage_file in result.generated_file_paths.values():
         assert Path(stage_file).exists()
+
+
+def test_orchestrator_generates_tests_and_quality_metrics(tmp_path: Path) -> None:
+    def _validator(project_dir: str) -> ValidationResult:
+        return ValidationResult(
+            lint_errors=0,
+            type_errors=0,
+            test_coverage=85.0,
+            lint_output="",
+            type_output="",
+            test_output="",
+            lint_exit_code=0,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    orchestrator = Orchestrator(
+        notebook_parser=NotebookParser(),
+        notebook_analyzer=NotebookAnalyzerAgent(),
+        architecture_agent=ArchitectureAgent(),
+        code_generator=CodeGeneratorAgent(),
+        test_generator=PipelineTestGeneratorAgent(),
+        reviewer=ReviewerAgent(validator=_validator),
+    )
+
+    result = orchestrator.run(
+        "tests/fixtures/simple_regression.ipynb",
+        output_dir=str(tmp_path),
+    )
+
+    assert result.generated_tests is not None
+    assert result.generated_test_file_paths is not None
+    assert len(result.generated_test_file_paths) == 4
+    assert result.quality_metrics is not None
+    assert result.quality_metrics.test_coverage == 85.0
+
+
+def test_orchestrator_reviewer_real_validation_meets_threshold(tmp_path: Path) -> None:
+    orchestrator = Orchestrator(
+        notebook_parser=NotebookParser(),
+        notebook_analyzer=NotebookAnalyzerAgent(),
+        architecture_agent=ArchitectureAgent(),
+        code_generator=CodeGeneratorAgent(),
+        test_generator=PipelineTestGeneratorAgent(),
+        reviewer=ReviewerAgent(),
+    )
+
+    result = orchestrator.run(
+        "tests/fixtures/simple_regression.ipynb",
+        output_dir=str(tmp_path),
+    )
+
+    assert result.quality_metrics is not None
+    assert result.quality_metrics.lint_errors == 0
+    assert result.quality_metrics.type_errors == 0
+    assert result.quality_metrics.test_coverage >= 80.0
