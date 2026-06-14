@@ -9,8 +9,8 @@ from src.agents.code_generator import CodeGeneratorAgent
 from src.agents.notebook_analyzer import NotebookAnalyzerAgent
 from src.agents.reviewer import ReviewerAgent
 from src.agents.test_generator import PipelineTestGeneratorAgent
-from src.domain.entities import Notebook
-from src.domain.interfaces import INotebookParser
+from src.domain.entities import Notebook, Pipeline, PipelineStage, PipelineType
+from src.domain.interfaces import IExporter, INotebookParser
 from src.domain.value_objects import QualityMetrics
 
 
@@ -26,6 +26,7 @@ class OrchestrationResult:
     generated_tests: dict[str, str] | None = None
     generated_test_file_paths: dict[str, str] | None = None
     quality_metrics: QualityMetrics | None = None
+    exported_zip_path: str | None = None
 
 
 class Orchestrator:
@@ -40,6 +41,7 @@ class Orchestrator:
         code_generator: CodeGeneratorAgent | None = None,
         test_generator: PipelineTestGeneratorAgent | None = None,
         reviewer: ReviewerAgent | None = None,
+        exporter: IExporter | None = None,
     ) -> None:
         self._notebook_parser = notebook_parser
         self._notebook_analyzer = notebook_analyzer
@@ -47,6 +49,7 @@ class Orchestrator:
         self._code_generator = code_generator
         self._test_generator = test_generator
         self._reviewer = reviewer
+        self._exporter = exporter
 
     def run(
         self,
@@ -72,6 +75,7 @@ class Orchestrator:
         generated_tests: dict[str, str] | None = None
         generated_test_file_paths: dict[str, str] | None = None
         quality_metrics: QualityMetrics | None = None
+        exported_zip_path: str | None = None
 
         if self._code_generator is not None:
             generated_modules = self._code_generator.generate_modules(
@@ -109,6 +113,25 @@ class Orchestrator:
             )
             quality_metrics = review_result.quality_metrics
 
+        if (
+            self._exporter is not None
+            and run_output_dir is not None
+            and generated_modules is not None
+            and generated_tests is not None
+        ):
+            pipeline = self._build_pipeline(
+                notebook=notebook,
+                generated_modules=generated_modules,
+                generated_tests=generated_tests,
+                architecture_plan=architecture_plan,
+                quality_metrics=quality_metrics,
+            )
+            exported_zip_path = self._exporter.export(
+                pipeline,
+                run_output_dir,
+                libraries=notebook_analysis.get("libraries", []),
+            )
+
         return OrchestrationResult(
             notebook=notebook,
             notebook_analysis=notebook_analysis,
@@ -117,5 +140,42 @@ class Orchestrator:
             generated_file_paths=generated_file_paths,
             generated_tests=generated_tests,
             generated_test_file_paths=generated_test_file_paths,
+            quality_metrics=quality_metrics,
+            exported_zip_path=exported_zip_path,
+        )
+
+    def _build_pipeline(
+        self,
+        *,
+        notebook: Notebook,
+        generated_modules: dict[str, str],
+        generated_tests: dict[str, str],
+        architecture_plan: dict[str, Any],
+        quality_metrics: QualityMetrics | None,
+    ) -> Pipeline:
+        stage_types = (
+            PipelineType.FEATURE_ENGINEERING,
+            PipelineType.TRAINING,
+            PipelineType.INFERENCE,
+            PipelineType.EVALUATION,
+        )
+        stages: list[PipelineStage] = []
+        for stage_type in stage_types:
+            stage_key = stage_type.value
+            stage_cells = [
+                cell for cell in notebook.cells if cell.pipeline_type == stage_type
+            ]
+            stages.append(
+                PipelineStage(
+                    pipeline_type=stage_type,
+                    cells=stage_cells,
+                    generated_code=generated_modules.get(stage_key),
+                    generated_tests=generated_tests.get(stage_key),
+                )
+            )
+        return Pipeline(
+            notebook=notebook,
+            stages=stages,
+            architecture_plan=architecture_plan,
             quality_metrics=quality_metrics,
         )

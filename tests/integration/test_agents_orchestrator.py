@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from zipfile import ZipFile
 
 from src.agents.architecture_agent import ArchitectureAgent
 from src.agents.code_generator import CodeGeneratorAgent
@@ -10,6 +11,7 @@ from src.agents.reviewer import ReviewerAgent
 from src.agents.test_generator import PipelineTestGeneratorAgent
 from src.application.validate_output import ValidationResult
 from src.domain.entities import PipelineType
+from src.infrastructure.exporters import ZipExporter
 from src.infrastructure.parsers.notebook_parser import NotebookParser
 
 
@@ -139,3 +141,29 @@ def test_orchestrator_reviewer_real_validation_meets_threshold(tmp_path: Path) -
     assert result.quality_metrics.lint_errors == 0
     assert result.quality_metrics.type_errors == 0
     assert result.quality_metrics.test_coverage >= 80.0
+
+
+def test_orchestrator_exports_zip_archive(tmp_path: Path) -> None:
+    orchestrator = Orchestrator(
+        notebook_parser=NotebookParser(),
+        notebook_analyzer=NotebookAnalyzerAgent(),
+        architecture_agent=ArchitectureAgent(),
+        code_generator=CodeGeneratorAgent(),
+        test_generator=PipelineTestGeneratorAgent(),
+        reviewer=ReviewerAgent(),
+        exporter=ZipExporter(),
+    )
+
+    result = orchestrator.run(
+        "tests/fixtures/simple_regression.ipynb",
+        output_dir=str(tmp_path),
+    )
+
+    assert result.exported_zip_path is not None
+    zip_path = Path(result.exported_zip_path)
+    assert zip_path.exists()
+    with ZipFile(zip_path, "r") as zip_file:
+        names = set(zip_file.namelist())
+    assert "src/feature_engineering.py" in names
+    assert "tests/test_feature_engineering.py" in names
+    assert "requirements.txt" in names
