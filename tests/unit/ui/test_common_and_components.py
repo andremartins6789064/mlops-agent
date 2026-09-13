@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.agents.orchestrator import OrchestrationResult
+from src.application.validate_output import ValidationResult
 from src.domain.entities import CellType, Notebook, NotebookCell
 from src.domain.value_objects import QualityMetrics
 from src.shared.provenance import StageProvenance
@@ -12,6 +13,7 @@ from src.ui.components import (
     code_viewer,
     metrics_card,
     provenance_card,
+    validation_details,
 )
 from src.ui.pages import common
 from src.ui.session import (
@@ -131,6 +133,7 @@ def test_components_render_with_fake_streamlit(monkeypatch: Any) -> None:
     monkeypatch.setattr(code_viewer, "st", fake_st)
     monkeypatch.setattr(metrics_card, "st", fake_st)
     monkeypatch.setattr(cell_stage_table, "st", fake_st)
+    monkeypatch.setattr(validation_details, "st", fake_st)
 
     code_viewer.render_code_viewer(title="Code", source_code=None)
     code_viewer.render_code_viewer(
@@ -146,10 +149,27 @@ def test_components_render_with_fake_streamlit(monkeypatch: Any) -> None:
         ),
         analysis={"cells_by_pipeline": {"training": [0]}},
     )
+    validation_details.render_validation_details(
+        validation=ValidationResult(
+            lint_errors=0,
+            type_errors=0,
+            test_coverage=88.0,
+            lint_output="ruff passed",
+            type_output="mypy passed",
+            test_output="1 passed",
+            lint_exit_code=0,
+            type_exit_code=0,
+            test_exit_code=0,
+        ),
+        validated_output_dir="output/generated",
+        generated_file_paths={"training": "output/generated/src/training.py"},
+    )
 
     assert any("Ainda não há conteúdo" in message for message in fake_st.messages)
     assert any("Cobertura" in message for message in fake_st.messages)
     assert any("dataframe:" in message for message in fake_st.messages)
+    assert any("Validação real do artefato" in message for message in fake_st.messages)
+    assert any("Saída do pytest" in message for message in fake_st.messages)
 
 
 def test_build_cell_stage_rows_preserves_order_and_shortens_code() -> None:

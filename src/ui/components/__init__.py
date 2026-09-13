@@ -5,6 +5,7 @@ from src.ui.components.cell_stage_table import (
 from src.ui.components.code_viewer import render_code_viewer
 from src.ui.components.metrics_card import render_metrics_card
 from src.ui.components.provenance_card import render_stage_provenance
+from src.ui.components.validation_details import render_validation_details
 
 __all__ = [
     "build_cell_stage_rows",
@@ -12,4 +13,5 @@ __all__ = [
     "render_code_viewer",
     "render_metrics_card",
     "render_stage_provenance",
+    "render_validation_details",
 ]

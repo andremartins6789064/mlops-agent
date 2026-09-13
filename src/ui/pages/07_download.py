@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.ui.components import render_metrics_card
+from src.ui.components import render_metrics_card, render_validation_details
 from src.ui.pages.common import (
     read_result,
     render_download_section,
@@ -20,4 +20,9 @@ if result is None:
 else:
     render_metrics_card(result.quality_metrics)
     st.write(summarize_review_status(result.quality_metrics))
+    render_validation_details(
+        validation=result.validation_result,
+        validated_output_dir=result.validated_output_dir,
+        generated_file_paths=result.generated_file_paths,
+    )
     render_download_section(result)

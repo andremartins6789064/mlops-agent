@@ -9,6 +9,7 @@ from src.agents.code_generator import CodeGeneratorAgent
 from src.agents.notebook_analyzer import NotebookAnalyzerAgent
 from src.agents.reviewer import ReviewerAgent
 from src.agents.test_generator import PipelineTestGeneratorAgent
+from src.application.validate_output import ValidationResult
 from src.domain.entities import Notebook, Pipeline, PipelineStage, PipelineType
 from src.domain.interfaces import IExporter, INotebookParser
 from src.domain.value_objects import QualityMetrics
@@ -29,6 +30,8 @@ class OrchestrationResult:
     generated_tests: dict[str, str] | None = None
     generated_test_file_paths: dict[str, str] | None = None
     stage_provenance: dict[str, StageProvenance] | None = None
+    validation_result: ValidationResult | None = None
+    validated_output_dir: str | None = None
     quality_metrics: QualityMetrics | None = None
     exported_zip_path: str | None = None
     execution_log_path: str | None = None
@@ -87,6 +90,7 @@ class Orchestrator:
         generated_tests: dict[str, str] | None = None
         generated_test_file_paths: dict[str, str] | None = None
         quality_metrics: QualityMetrics | None = None
+        validation_result: ValidationResult | None = None
         exported_zip_path: str | None = None
         stage_provenance: dict[str, StageProvenance] = {}
 
@@ -133,6 +137,7 @@ class Orchestrator:
                 generated_tests=generated_tests,
             )
             quality_metrics = review_result.quality_metrics
+            validation_result = review_result.validation_result
             if execution_logger is not None:
                 execution_logger.log(
                     "review_completed",
@@ -179,6 +184,10 @@ class Orchestrator:
             generated_tests=generated_tests,
             generated_test_file_paths=generated_test_file_paths,
             stage_provenance=stage_provenance,
+            validation_result=validation_result,
+            validated_output_dir=(
+                run_output_dir if validation_result is not None else None
+            ),
             quality_metrics=quality_metrics,
             exported_zip_path=exported_zip_path,
             execution_log_path=(
