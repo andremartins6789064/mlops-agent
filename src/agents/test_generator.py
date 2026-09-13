@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.domain.interfaces import ILLMClient
 from src.shared.llm_parsing import parse_json_object, parse_python_block
+from src.shared.python_source import python_syntax_error
 
 
 class PipelineTestGeneratorAgent:
@@ -63,16 +64,27 @@ class PipelineTestGeneratorAgent:
         raw_response = self._llm_client.generate(prompt=prompt)
         python_result = parse_python_block(raw_response)
         if python_result.method == "fenced" and isinstance(python_result.value, str):
-            if "def test_" in python_result.value:
+            if (
+                "def test_" in python_result.value
+                and python_syntax_error(python_result.value) is None
+            ):
                 return python_result.value
             return None
         parsed = parse_json_object(raw_response).value
         if isinstance(parsed, dict):
             test_code = parsed.get("test_code")
-            if isinstance(test_code, str) and "def test_" in test_code:
+            if (
+                isinstance(test_code, str)
+                and "def test_" in test_code
+                and python_syntax_error(test_code) is None
+            ):
                 return test_code.strip()
         python_code = python_result.value
-        if isinstance(python_code, str) and "def test_" in python_code:
+        if (
+            isinstance(python_code, str)
+            and "def test_" in python_code
+            and python_syntax_error(python_code) is None
+        ):
             return python_code
         return None
 

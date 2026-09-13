@@ -3,11 +3,18 @@ Generate pytest tests for one ML pipeline stage module.
 
 Follow these internal steps before final output:
 1) Identify public functions in the module.
-2) Create deterministic tests with clear assertions.
-3) Include minimal fixtures/mocks only if required.
+2) Read each function's exact signature and test only behavior supported by the
+   implementation.
+3) Create deterministic tests with clear assertions.
+4) Include minimal fixtures/mocks only if required.
 
 Requirements:
 - Return the complete executable Python test file inside one `python` fenced block.
+- Do not invent functions, exceptions, paths, configuration files, or parameters
+  that are absent from the module.
+- Do not call a function with arguments that do not match its exact signature.
+- Every imported symbol must exist in the generated module or be imported from a
+  standard/test dependency.
 - Use English names and docstrings.
 - Keep compatibility with Ruff and mypy strict mode.
 - Do not add explanations before or after the fenced block.

@@ -10,6 +10,7 @@ from src.domain.interfaces import ILLMClient
 from src.shared.config import settings
 from src.shared.llm_parsing import parse_json_object, parse_python_block
 from src.shared.provenance import StageProvenance
+from src.shared.python_source import python_syntax_error
 
 
 class CodeGeneratorAgent:
@@ -116,22 +117,35 @@ class CodeGeneratorAgent:
         raw_response = self._llm_client.generate(prompt=prompt)
         python_result = parse_python_block(raw_response)
         if python_result.method == "fenced" and isinstance(python_result.value, str):
-            return python_result.value, python_result.method, None
+            return self._accept_python_response(
+                python_result.value, python_result.method
+            )
         json_result = parse_json_object(raw_response)
         parsed_payload = json_result.value
         if isinstance(parsed_payload, dict):
             module_code = parsed_payload.get("module_code")
             if isinstance(module_code, str) and "def " in module_code:
-                return module_code.strip(), json_result.method, None
+                return self._accept_python_response(
+                    module_code.strip(), json_result.method
+                )
         python_code = python_result.value
         if isinstance(python_code, str):
-            return python_code, python_result.method, None
+            return self._accept_python_response(python_code, python_result.method)
         return (
             None,
             None,
             f"Unable to parse LLM response (JSON: {json_result.method}; "
             f"Python: {python_result.method})",
         )
+
+    def _accept_python_response(
+        self, source: str, parse_method: str
+    ) -> tuple[str | None, str | None, str | None]:
+        """Accept only syntactically valid Python returned by the LLM."""
+        syntax_error = python_syntax_error(source)
+        if syntax_error is not None:
+            return None, None, f"Generated Python is invalid: {syntax_error}"
+        return source, parse_method, None
 
     def _generate_module_with_templates(
         self,

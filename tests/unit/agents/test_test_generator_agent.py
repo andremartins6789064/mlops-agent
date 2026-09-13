@@ -66,6 +66,21 @@ def test_test_generator_accepts_fenced_python_with_surrounding_prose() -> None:
     assert tests["training"].startswith("def test_custom")
 
 
+def test_test_generator_prompt_requires_exact_module_signatures() -> None:
+    generator = PipelineTestGeneratorAgent()
+
+    prompt = generator._build_prompt(
+        stage_name="training",
+        module_code=(
+            "def train_model(features: list[int]) -> object:\n    return features\n"
+        ),
+    )
+
+    assert "exact signature" in prompt
+    assert "Do not invent functions" in prompt
+    assert "Do not call a function with arguments" in prompt
+
+
 def test_test_generator_accepts_raw_python_response() -> None:
     generator = PipelineTestGeneratorAgent(
         llm_client=_StubLLMClient("def test_custom() -> None:\n    assert True\n")
@@ -76,6 +91,20 @@ def test_test_generator_accepts_raw_python_response() -> None:
     )
 
     assert tests["training"].startswith("def test_custom")
+
+
+def test_test_generator_falls_back_when_llm_test_is_invalid() -> None:
+    generator = PipelineTestGeneratorAgent(
+        llm_client=_StubLLMClient(
+            "```python\ndef test_custom() -> None:\n    return X = value\n```"
+        )
+    )
+
+    tests = generator.generate_tests(
+        generated_modules={"training": "def train_model() -> None:\n    pass\n"}
+    )
+
+    assert "def test_training_train_and_save_model" in tests["training"]
 
 
 def test_test_generator_writes_tests_to_disk(tmp_path: Path) -> None:

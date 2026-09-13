@@ -14,6 +14,7 @@ from src.domain.interfaces import IExporter, INotebookParser
 from src.domain.value_objects import QualityMetrics
 from src.shared.logger import StructuredExecutionLogger
 from src.shared.provenance import StageProvenance
+from src.shared.python_source import extract_imported_libraries
 
 
 @dataclass(slots=True)
@@ -156,7 +157,10 @@ class Orchestrator:
             exported_zip_path = self._exporter.export(
                 pipeline,
                 run_output_dir,
-                libraries=notebook_analysis.get("libraries", []),
+                libraries=self._collect_project_libraries(
+                    notebook_analysis=notebook_analysis,
+                    generated_modules=generated_modules,
+                ),
             )
 
         if execution_logger is not None:
@@ -217,3 +221,19 @@ class Orchestrator:
             architecture_plan=architecture_plan,
             quality_metrics=quality_metrics,
         )
+
+    def _collect_project_libraries(
+        self,
+        *,
+        notebook_analysis: dict[str, Any],
+        generated_modules: dict[str, str],
+    ) -> list[str]:
+        """Combine analyzed libraries with imports in generated source."""
+        libraries = {
+            library
+            for library in notebook_analysis.get("libraries", [])
+            if isinstance(library, str)
+        }
+        for source in generated_modules.values():
+            libraries.update(extract_imported_libraries(source))
+        return sorted(libraries)

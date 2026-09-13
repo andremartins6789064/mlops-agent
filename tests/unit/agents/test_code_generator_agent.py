@@ -102,6 +102,26 @@ def test_code_generator_accepts_raw_python_legacy_response() -> None:
     assert generated["feature_engineering"].startswith("def custom_stage")
 
 
+def test_code_generator_falls_back_when_llm_python_is_invalid() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    llm = _StubLLMClient(
+        "```python\ndef custom_stage() -> int:\n    return X = value\n```"
+    )
+    agent = CodeGeneratorAgent(llm_client=llm)
+
+    generated = agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={"libraries": []},
+        architecture_plan=_sample_plan(),
+    )
+
+    provenance = agent.stage_provenance["feature_engineering"]
+    assert "def load_data" in generated["feature_engineering"]
+    assert provenance.origin == "template"
+    assert provenance.fallback_reason is not None
+    assert "invalid" in provenance.fallback_reason.lower()
+
+
 def test_code_generator_writes_modules_to_output_dir(tmp_path: Path) -> None:
     notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
     agent = CodeGeneratorAgent()
