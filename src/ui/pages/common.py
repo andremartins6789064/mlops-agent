@@ -7,7 +7,11 @@ from typing import Any, cast
 import streamlit as st
 
 from src.agents.orchestrator import OrchestrationResult
-from src.ui.components import render_code_viewer, render_stage_provenance
+from src.ui.components import (
+    render_cell_stage_table,
+    render_code_viewer,
+    render_stage_provenance,
+)
 from src.ui.session import (
     CONFIG_KEY,
     ERROR_KEY,
@@ -71,9 +75,12 @@ def render_stage_page(*, stage_name: str, title: str) -> None:
 
 
 def render_analysis_blocks(result: OrchestrationResult) -> None:
-    """Render analysis and architecture JSON objects."""
+    """Render the cell mapping, analysis details, and architecture plan."""
     st.subheader("Saída do Notebook Analyzer")
-    st.json(result.notebook_analysis)
+    render_cell_stage_table(
+        notebook=result.notebook,
+        analysis=result.notebook_analysis,
+    )
     st.subheader("Plano de arquitetura")
     st.json(result.architecture_plan)
     st.subheader("Proveniência por estágio")

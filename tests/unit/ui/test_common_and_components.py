@@ -7,7 +7,12 @@ from src.agents.orchestrator import OrchestrationResult
 from src.domain.entities import CellType, Notebook, NotebookCell
 from src.domain.value_objects import QualityMetrics
 from src.shared.provenance import StageProvenance
-from src.ui.components import code_viewer, metrics_card, provenance_card
+from src.ui.components import (
+    cell_stage_table,
+    code_viewer,
+    metrics_card,
+    provenance_card,
+)
 from src.ui.pages import common
 from src.ui.session import (
     CONFIG_KEY,
@@ -50,6 +55,13 @@ class _FakeStreamlit:
 
     def json(self, payload: dict[str, Any]) -> None:
         self.messages.append(str(payload))
+
+    def dataframe(self, data: object, **kwargs: object) -> None:
+        self.messages.append(f"dataframe:{data}")
+
+    def expander(self, label: str) -> _FakeSpinner:
+        self.messages.append(label)
+        return _FakeSpinner()
 
     def write(self, message: object) -> None:
         self.messages.append(str(message))
@@ -118,6 +130,7 @@ def test_components_render_with_fake_streamlit(monkeypatch: Any) -> None:
     fake_st = _FakeStreamlit()
     monkeypatch.setattr(code_viewer, "st", fake_st)
     monkeypatch.setattr(metrics_card, "st", fake_st)
+    monkeypatch.setattr(cell_stage_table, "st", fake_st)
 
     code_viewer.render_code_viewer(title="Code", source_code=None)
     code_viewer.render_code_viewer(
@@ -125,9 +138,39 @@ def test_components_render_with_fake_streamlit(monkeypatch: Any) -> None:
     )
     metrics_card.render_metrics_card(None)
     metrics_card.render_metrics_card(QualityMetrics(test_coverage=90.0))
+    cell_stage_table.render_cell_stage_table(
+        notebook=Notebook(
+            path="demo.ipynb",
+            cells=[NotebookCell(index=0, cell_type=CellType.CODE, source="x = 1")],
+            metadata={},
+        ),
+        analysis={"cells_by_pipeline": {"training": [0]}},
+    )
 
     assert any("Ainda não há conteúdo" in message for message in fake_st.messages)
     assert any("Cobertura" in message for message in fake_st.messages)
+    assert any("dataframe:" in message for message in fake_st.messages)
+
+
+def test_build_cell_stage_rows_preserves_order_and_shortens_code() -> None:
+    notebook = Notebook(
+        path="demo.ipynb",
+        cells=[
+            NotebookCell(index=2, cell_type=CellType.CODE, source="x = 1\nprint(x)"),
+            NotebookCell(index=5, cell_type=CellType.CODE, source=""),
+        ],
+        metadata={},
+    )
+
+    rows = cell_stage_table.build_cell_stage_rows(
+        notebook=notebook,
+        analysis={"cells_by_pipeline": {"training": [2]}},
+    )
+
+    assert rows == [
+        {"Índice": 2, "Código": "x = 1 print(x)", "Estágio": "training"},
+        {"Índice": 5, "Código": "(célula vazia)", "Estágio": "não atribuído"},
+    ]
 
 
 def test_common_helpers_update_session_and_render(
