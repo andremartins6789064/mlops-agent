@@ -177,3 +177,22 @@ def test_code_generator_handles_empty_stage_cells() -> None:
     payload = json.loads(llm.prompts[1].split("Generation context JSON:\n", 1)[1])
     assert payload["stage_cells"]["cells"] == []
     assert payload["stage_cells"]["truncated"] is False
+
+
+def test_code_generator_prompt_requires_faithful_notebook_refactoring() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    agent = CodeGeneratorAgent()
+
+    prompt = agent._build_prompt(
+        module_name="training",
+        notebook=notebook,
+        notebook_analysis={"cells_by_pipeline": {"training": [3]}},
+        architecture_plan=_sample_plan(),
+    )
+
+    assert "authoritative implementation" in prompt
+    assert "refactoring" in prompt
+    assert "greenfield generation" in prompt
+    assert "Preserve the notebook's logic" in prompt
+    assert "Do not invent new behavior" in prompt
+    assert "Convert global state into explicit function arguments" in prompt
