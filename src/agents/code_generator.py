@@ -65,7 +65,7 @@ class CodeGeneratorAgent:
         output_dir: str = "output",
     ) -> dict[str, str]:
         """Persist generated modules to disk and return file path map."""
-        output_path = Path(output_dir)
+        output_path = Path(output_dir) / "src"
         output_path.mkdir(parents=True, exist_ok=True)
         file_map: dict[str, str] = {}
         for module_name, source_code in generated_modules.items():

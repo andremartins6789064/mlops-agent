@@ -83,6 +83,7 @@ def test_code_generator_writes_modules_to_output_dir(tmp_path: Path) -> None:
 
     for module_name in ("feature_engineering", "training", "inference", "evaluation"):
         assert module_name in file_map
+        assert Path(file_map[module_name]) == tmp_path / "src" / f"{module_name}.py"
         assert Path(file_map[module_name]).exists()
 
 

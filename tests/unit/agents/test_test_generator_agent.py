@@ -33,6 +33,7 @@ def test_test_generator_creates_tests_for_all_modules() -> None:
         "evaluation",
     }
     assert "def test_feature_eng_load_and_split" in tests["feature_engineering"]
+    assert "parents[1] / 'src'" in tests["feature_engineering"]
 
 
 def test_test_generator_uses_llm_test_code_when_available() -> None:

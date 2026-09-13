@@ -84,6 +84,7 @@ def test_orchestrator_generates_stage_modules(tmp_path: Path) -> None:
         "evaluation",
     }
     for stage_file in result.generated_file_paths.values():
+        assert Path(stage_file).parent.name == "src"
         assert Path(stage_file).exists()
 
 

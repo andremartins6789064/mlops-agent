@@ -85,7 +85,8 @@ class ReviewerAgent:
     def _write_modules(
         self, *, project_dir: str, generated_modules: dict[str, str]
     ) -> None:
-        root = Path(project_dir)
+        root = Path(project_dir) / "src"
+        root.mkdir(parents=True, exist_ok=True)
         for stage_name, source in generated_modules.items():
             (root / f"{stage_name}.py").write_text(source, encoding="utf-8")
 
