@@ -12,6 +12,8 @@ from src.application.equivalence_runner import (
     run_equivalence,
 )
 
+# mypy: disable-error-code=no-untyped-call
+
 
 def _write_notebook(path: Path, source: str) -> None:
     notebook = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell(source)])

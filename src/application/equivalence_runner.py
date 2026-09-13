@@ -12,6 +12,8 @@ from enum import StrEnum
 import nbformat
 from nbclient import NotebookClient
 
+# mypy: disable-error-code=no-untyped-call
+
 
 class EquivalenceStatus(StrEnum):
     """Possible functional-equivalence verdicts."""
