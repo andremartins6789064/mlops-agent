@@ -18,9 +18,13 @@ class CodeGeneratorAgent:
         llm_client: ILLMClient | None = None,
         prompt_path: str = "src/infrastructure/prompts/code_generator.txt",
         stage_feedback: dict[str, str] | None = None,
+        context_budget_chars: int = 12_000,
     ) -> None:
+        if context_budget_chars <= 0:
+            raise ValueError("context_budget_chars must be greater than zero")
         self._llm_client = llm_client
         self._prompt_path = prompt_path
+        self._context_budget_chars = context_budget_chars
         self._stage_feedback = {
             key: value.strip()
             for key, value in (stage_feedback or {}).items()
@@ -144,14 +148,75 @@ class CodeGeneratorAgent:
         architecture_plan: dict[str, Any],
     ) -> str:
         prompt_template = Path(self._prompt_path).read_text(encoding="utf-8")
+        stage_cells = self._build_stage_cell_context(
+            module_name=module_name,
+            notebook=notebook,
+            notebook_analysis=notebook_analysis,
+        )
         payload = {
             "module_name": module_name,
             "notebook_path": notebook.path,
-            "cells_by_pipeline": notebook_analysis.get("cells_by_pipeline", {}),
+            "stage_cells": stage_cells,
+            "shared_variables": notebook_analysis.get("shared_variables", []),
             "module_plan": architecture_plan.get("modules", {}).get(module_name, {}),
             "stage_feedback": self._stage_feedback.get(module_name),
         }
         return f"{prompt_template}\n\nGeneration context JSON:\n{json.dumps(payload)}"
+
+    def _build_stage_cell_context(
+        self,
+        *,
+        module_name: str,
+        notebook: Notebook,
+        notebook_analysis: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build the selected stage's source with an explicit character budget."""
+        cells_by_pipeline = notebook_analysis.get("cells_by_pipeline", {})
+        indexes = (
+            cells_by_pipeline.get(module_name, [])
+            if isinstance(cells_by_pipeline, dict)
+            else []
+        )
+        valid_indexes = (
+            {index for index in indexes if isinstance(index, int)}
+            if isinstance(indexes, list)
+            else set()
+        )
+        selected_cells = [
+            cell for cell in notebook.cells if cell.index in valid_indexes
+        ]
+
+        remaining = self._context_budget_chars
+        serialized_cells: list[dict[str, Any]] = []
+        truncated = False
+        original_chars = sum(len(cell.source) for cell in selected_cells)
+        included_chars = 0
+        for cell in selected_cells:
+            source = cell.source
+            included_source = source[:remaining]
+            included_chars += len(included_source)
+            cell_was_truncated = len(included_source) < len(source)
+            serialized_cells.append(
+                {
+                    "index": cell.index,
+                    "cell_type": cell.cell_type.value,
+                    "source": included_source,
+                    "truncated": cell_was_truncated,
+                }
+            )
+            remaining -= len(included_source)
+            truncated = truncated or cell_was_truncated
+            if remaining == 0:
+                break
+
+        return {
+            "module_name": module_name,
+            "cells": serialized_cells,
+            "context_budget_chars": self._context_budget_chars,
+            "original_source_chars": original_chars,
+            "included_source_chars": included_chars,
+            "truncated": truncated,
+        }
 
     def _build_imports(self, *, module_name: str, libraries: Any) -> str:
         import_lines = ["from __future__ import annotations", "from typing import Any"]

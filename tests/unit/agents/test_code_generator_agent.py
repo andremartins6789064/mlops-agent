@@ -115,3 +115,65 @@ def test_code_generator_includes_stage_feedback_in_llm_prompt() -> None:
     )
     assert any("stage_feedback" in prompt for prompt in llm.prompts)
     assert any("Add logging" in prompt for prompt in llm.prompts)
+
+
+def test_code_generator_includes_stage_cell_source_and_shared_variables() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    llm = _StubLLMClient(
+        json.dumps({"module_code": "def custom_stage() -> int:\n    return 1\n"})
+    )
+    agent = CodeGeneratorAgent(llm_client=llm)
+
+    agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={
+            "cells_by_pipeline": {"feature_engineering": [1]},
+            "shared_variables": ["X", "y"],
+        },
+        architecture_plan=_sample_plan(),
+    )
+
+    payload = json.loads(llm.prompts[0].split("Generation context JSON:\n", 1)[1])
+    assert payload["stage_cells"]["cells"][0]["index"] == 1
+    assert "LinearRegression" in payload["stage_cells"]["cells"][0]["source"]
+    assert payload["shared_variables"] == ["X", "y"]
+
+
+def test_code_generator_truncates_stage_cell_source_at_configured_budget() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    llm = _StubLLMClient(
+        json.dumps({"module_code": "def custom_stage() -> int:\n    return 1\n"})
+    )
+    agent = CodeGeneratorAgent(llm_client=llm, context_budget_chars=10)
+
+    agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={"cells_by_pipeline": {"feature_engineering": [1]}},
+        architecture_plan=_sample_plan(),
+    )
+
+    payload = json.loads(llm.prompts[0].split("Generation context JSON:\n", 1)[1])
+    stage_context = payload["stage_cells"]
+    assert stage_context["truncated"] is True
+    assert stage_context["context_budget_chars"] == 10
+    assert stage_context["included_source_chars"] == 10
+    assert len(stage_context["cells"][0]["source"]) == 10
+    assert stage_context["cells"][0]["truncated"] is True
+
+
+def test_code_generator_handles_empty_stage_cells() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    llm = _StubLLMClient(
+        json.dumps({"module_code": "def custom_stage() -> int:\n    return 1\n"})
+    )
+    agent = CodeGeneratorAgent(llm_client=llm)
+
+    agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={"cells_by_pipeline": {"training": []}},
+        architecture_plan=_sample_plan(),
+    )
+
+    payload = json.loads(llm.prompts[1].split("Generation context JSON:\n", 1)[1])
+    assert payload["stage_cells"]["cells"] == []
+    assert payload["stage_cells"]["truncated"] is False
