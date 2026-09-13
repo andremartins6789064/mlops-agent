@@ -1,0 +1,298 @@
+"""Headless notebook/model experiment matrix harness."""
+
+from __future__ import annotations
+
+import ast
+import csv
+import shlex
+import signal
+import time
+from collections.abc import Callable, Sequence
+from pathlib import Path
+
+from src.agents.orchestrator import OrchestrationResult
+from src.application.convert_notebook import ConversionRequest, convert_notebook
+from src.application.equivalence_runner import run_equivalence
+from src.application.mutation_checker import run_mutation_check
+from src.shared.progress import ProgressEvent
+
+Converter = Callable[[ConversionRequest], OrchestrationResult]
+
+
+class ExperimentTimeout(BaseException):
+    """Signal that one matrix combination exceeded its time budget."""
+
+
+CSV_FIELDS = (
+    "notebook",
+    "model",
+    "repetition",
+    "duration_seconds",
+    "equivalence_status",
+    "original_metric",
+    "generated_metric",
+    "equivalence_error",
+    "stage_origins",
+    "fallback_stages",
+    "review_iterations",
+    "coverage",
+    "lint_errors",
+    "type_errors",
+    "mutation_score",
+    "mutation_survivors",
+    "empty_functions",
+    "error",
+)
+
+
+def run_experiment_matrix(
+    *,
+    notebooks: Sequence[str],
+    models: Sequence[str],
+    repetitions: int,
+    output_csv: str,
+    output_root: str = "output/experiments",
+    pipeline_command: str | None = None,
+    tolerance: float = 0.05,
+    timeout_seconds: int = 120,
+    max_run_seconds: int = 180,
+    run_mutation: bool = True,
+    converter: Converter = convert_notebook,
+) -> list[dict[str, str]]:
+    """Run every notebook/model combination and write one CSV row per run."""
+    if repetitions <= 0:
+        raise ValueError("repetitions must be positive")
+    if max_run_seconds <= 0:
+        raise ValueError("max_run_seconds must be positive")
+
+    rows: list[dict[str, str]] = []
+    root = Path(output_root)
+    root.mkdir(parents=True, exist_ok=True)
+    destination = Path(output_csv)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("w", encoding="utf-8", newline="") as file_obj:
+        writer = csv.DictWriter(file_obj, fieldnames=CSV_FIELDS)
+        writer.writeheader()
+        for notebook in notebooks:
+            for model in models:
+                for repetition in range(1, repetitions + 1):
+                    row = _run_one_with_timeout(
+                        notebook=notebook,
+                        model=model,
+                        repetition=repetition,
+                        output_root=root,
+                        pipeline_command=pipeline_command,
+                        tolerance=tolerance,
+                        timeout_seconds=timeout_seconds,
+                        max_run_seconds=max_run_seconds,
+                        run_mutation=run_mutation,
+                        converter=converter,
+                    )
+                    rows.append(row)
+                    writer.writerow(row)
+                    file_obj.flush()
+                    print(
+                        f"[matrix] {notebook} | {model} | run={repetition} "
+                        f"| status={row['error'] or row['equivalence_status']}",
+                        flush=True,
+                    )
+    return rows
+
+
+def _run_one_with_timeout(
+    *,
+    notebook: str,
+    model: str,
+    repetition: int,
+    output_root: Path,
+    pipeline_command: str | None,
+    tolerance: float,
+    timeout_seconds: int,
+    max_run_seconds: int,
+    run_mutation: bool,
+    converter: Converter,
+) -> dict[str, str]:
+    row = _empty_row(notebook=notebook, model=model, repetition=repetition)
+
+    def _raise_timeout(signum: int, frame: object) -> None:
+        raise ExperimentTimeout
+
+    previous_handler = signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.setitimer(signal.ITIMER_REAL, max_run_seconds)
+    try:
+        return _run_one(
+            notebook=notebook,
+            model=model,
+            repetition=repetition,
+            output_root=output_root,
+            pipeline_command=pipeline_command,
+            tolerance=tolerance,
+            timeout_seconds=timeout_seconds,
+            run_mutation=run_mutation,
+            converter=converter,
+        )
+    except ExperimentTimeout:
+        row["error"] = f"timeout after {max_run_seconds}s"
+        row["duration_seconds"] = str(max_run_seconds)
+        return row
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
+def _run_one(
+    *,
+    notebook: str,
+    model: str,
+    repetition: int,
+    output_root: Path,
+    pipeline_command: str | None,
+    tolerance: float,
+    timeout_seconds: int,
+    run_mutation: bool,
+    converter: Converter,
+) -> dict[str, str]:
+    started = time.perf_counter()
+    output_dir = output_root / (
+        f"{Path(notebook).stem}-{_safe_name(model)}-run{repetition}"
+    )
+    row = _empty_row(
+        notebook=notebook,
+        model=model,
+        repetition=repetition,
+    )
+    try:
+
+        def report_progress(event: ProgressEvent) -> None:
+            print(
+                f"[{model}] {event.completed}/{event.total} {event.message}",
+                flush=True,
+            )
+
+        result = converter(
+            ConversionRequest(
+                notebook_path=notebook,
+                output_dir=str(output_dir),
+                use_llm=True,
+                llm_model=model,
+                progress_callback=report_progress,
+            )
+        )
+        _add_result_metrics(row, result)
+        _add_equivalence(
+            row,
+            notebook=notebook,
+            output_dir=output_dir,
+            pipeline_command=pipeline_command,
+            tolerance=tolerance,
+            timeout_seconds=timeout_seconds,
+        )
+        if run_mutation:
+            mutation = run_mutation_check(
+                str(output_dir),
+                timeout_seconds=timeout_seconds,
+            )
+            row["mutation_score"] = f"{mutation.mutation_score:.4f}"
+            row["mutation_survivors"] = str(mutation.survived_mutations)
+        row["empty_functions"] = str(_count_empty_functions(result.generated_modules))
+    except Exception as exc:  # noqa: BLE001
+        row["error"] = str(exc)
+    row["duration_seconds"] = f"{time.perf_counter() - started:.3f}"
+    return row
+
+
+def _empty_row(*, notebook: str, model: str, repetition: int) -> dict[str, str]:
+    return {field: "" for field in CSV_FIELDS} | {
+        "notebook": notebook,
+        "model": model,
+        "repetition": str(repetition),
+    }
+
+
+def _add_result_metrics(row: dict[str, str], result: OrchestrationResult) -> None:
+    provenance = result.stage_provenance or {}
+    row["stage_origins"] = ";".join(
+        f"{stage}:{item.origin}" for stage, item in sorted(provenance.items())
+    )
+    row["fallback_stages"] = ";".join(
+        stage for stage, item in sorted(provenance.items()) if item.origin == "template"
+    )
+    if result.quality_metrics is not None:
+        metrics = result.quality_metrics
+        row["review_iterations"] = str(metrics.review_iterations)
+        row["coverage"] = f"{metrics.test_coverage:.2f}"
+        row["lint_errors"] = str(metrics.lint_errors)
+        row["type_errors"] = str(metrics.type_errors)
+
+
+def _add_equivalence(
+    row: dict[str, str],
+    *,
+    notebook: str,
+    output_dir: Path,
+    pipeline_command: str | None,
+    tolerance: float,
+    timeout_seconds: int,
+) -> None:
+    if pipeline_command is None:
+        row["equivalence_status"] = "nao_executavel"
+        row["equivalence_error"] = "pipeline command not configured"
+        return
+    command = pipeline_command.format(
+        output_dir=str(output_dir),
+        notebook=notebook,
+    )
+    result = run_equivalence(
+        notebook_path=notebook,
+        pipeline_command=shlex.split(command),
+        pipeline_dir=str(output_dir),
+        tolerance=tolerance,
+        timeout_seconds=timeout_seconds,
+    )
+    row["equivalence_status"] = result.status.value
+    row["original_metric"] = _format_optional(result.original_metric)
+    row["generated_metric"] = _format_optional(result.generated_metric)
+    row["equivalence_error"] = result.error or ""
+
+
+def _count_empty_functions(modules: dict[str, str] | None) -> int:
+    if modules is None:
+        return 0
+    empty = 0
+    for source in modules.values():
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_empty(
+                node
+            ):
+                empty += 1
+    return empty
+
+
+def _is_empty(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    meaningful: list[ast.stmt] = []
+    for statement in node.body:
+        if isinstance(statement, ast.Expr) and isinstance(
+            statement.value, ast.Constant
+        ):
+            if isinstance(statement.value.value, str):
+                continue
+        meaningful.append(statement)
+    return len(meaningful) == 1 and isinstance(meaningful[0], ast.Pass)
+
+
+def _format_optional(value: float | None) -> str:
+    return "" if value is None else f"{value:.12g}"
+
+
+def _safe_name(value: str) -> str:
+    return "".join(character if character.isalnum() else "_" for character in value)
+
+
+def _write_csv(path: str, rows: list[dict[str, str]]) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("w", encoding="utf-8", newline="") as file_obj:
+        writer = csv.DictWriter(file_obj, fieldnames=CSV_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
