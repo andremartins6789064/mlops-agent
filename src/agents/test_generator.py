@@ -5,7 +5,10 @@ from pathlib import Path
 
 from src.domain.interfaces import ILLMClient
 from src.shared.llm_parsing import parse_json_object, parse_python_block
-from src.shared.python_source import python_syntax_error
+from src.shared.python_source import (
+    generated_test_matches_module,
+    python_syntax_error,
+)
 
 
 class PipelineTestGeneratorAgent:
@@ -67,6 +70,9 @@ class PipelineTestGeneratorAgent:
             if (
                 "def test_" in python_result.value
                 and python_syntax_error(python_result.value) is None
+                and generated_test_matches_module(
+                    python_result.value, module_code, stage_name
+                )
             ):
                 return python_result.value
             return None
@@ -77,6 +83,7 @@ class PipelineTestGeneratorAgent:
                 isinstance(test_code, str)
                 and "def test_" in test_code
                 and python_syntax_error(test_code) is None
+                and generated_test_matches_module(test_code, module_code, stage_name)
             ):
                 return test_code.strip()
         python_code = python_result.value
@@ -84,6 +91,7 @@ class PipelineTestGeneratorAgent:
             isinstance(python_code, str)
             and "def test_" in python_code
             and python_syntax_error(python_code) is None
+            and generated_test_matches_module(python_code, module_code, stage_name)
         ):
             return python_code
         return None
