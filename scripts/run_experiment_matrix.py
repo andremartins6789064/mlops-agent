@@ -29,6 +29,7 @@ def main() -> int:
     )
     parser.add_argument("--tolerance", type=float, default=0.05)
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--llm-timeout", type=float, default=300.0)
     parser.add_argument(
         "--max-run-seconds",
         type=int,
@@ -51,6 +52,7 @@ def main() -> int:
         pipeline_command=args.pipeline_command,
         tolerance=args.tolerance,
         timeout_seconds=args.timeout,
+        llm_timeout_seconds=args.llm_timeout,
         max_run_seconds=args.max_run_seconds,
         run_mutation=not args.skip_mutation,
     )

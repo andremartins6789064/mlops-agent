@@ -56,6 +56,7 @@ def run_experiment_matrix(
     tolerance: float = 0.05,
     timeout_seconds: int = 120,
     max_run_seconds: int = 180,
+    llm_timeout_seconds: float = 300.0,
     run_mutation: bool = True,
     converter: Converter = convert_notebook,
 ) -> list[dict[str, str]]:
@@ -85,6 +86,7 @@ def run_experiment_matrix(
                         tolerance=tolerance,
                         timeout_seconds=timeout_seconds,
                         max_run_seconds=max_run_seconds,
+                        llm_timeout_seconds=llm_timeout_seconds,
                         run_mutation=run_mutation,
                         converter=converter,
                     )
@@ -109,6 +111,7 @@ def _run_one_with_timeout(
     tolerance: float,
     timeout_seconds: int,
     max_run_seconds: int,
+    llm_timeout_seconds: float,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
@@ -128,6 +131,7 @@ def _run_one_with_timeout(
             pipeline_command=pipeline_command,
             tolerance=tolerance,
             timeout_seconds=timeout_seconds,
+            llm_timeout_seconds=llm_timeout_seconds,
             run_mutation=run_mutation,
             converter=converter,
         )
@@ -149,6 +153,7 @@ def _run_one(
     pipeline_command: str | None,
     tolerance: float,
     timeout_seconds: int,
+    llm_timeout_seconds: float,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
@@ -175,6 +180,7 @@ def _run_one(
                 output_dir=str(output_dir),
                 use_llm=True,
                 llm_model=model,
+                llm_timeout_seconds=llm_timeout_seconds,
                 progress_callback=report_progress,
             )
         )

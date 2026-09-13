@@ -1,0 +1,4 @@
+notebook,model,repetition,duration_seconds,equivalence_status,original_metric,generated_metric,equivalence_error,stage_origins,fallback_stages,review_iterations,coverage,lint_errors,type_errors,mutation_score,mutation_survivors,empty_functions,error
+notebooks/junior_regression.ipynb,gemma4:e2b,1,317.610,,,,,,,,,,,,,,LLM request failed.
+notebooks/junior_regression.ipynb,nemotron-3-nano:4b,1,385.447,,,,,,,,,,,,,,LLM request failed.
+notebooks/junior_regression.ipynb,smollm2:1.7b,1,222.723,,,,,,,,,,,,,,LLM request failed.

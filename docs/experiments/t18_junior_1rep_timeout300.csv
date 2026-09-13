@@ -1,0 +1,4 @@
+notebook,model,repetition,duration_seconds,equivalence_status,original_metric,generated_metric,equivalence_error,stage_origins,fallback_stages,review_iterations,coverage,lint_errors,type_errors,mutation_score,mutation_survivors,empty_functions,error
+notebooks/junior_regression.ipynb,gemma4:e2b,1,753.182,nao_executavel,,,pipeline command not configured,evaluation:llm;feature_engineering:llm;inference:llm;training:llm,,2,0.00,0,16,1.0000,0,0,
+notebooks/junior_regression.ipynb,nemotron-3-nano:4b,1,900,,,,,,,,,,,,,,timeout after 900s
+notebooks/junior_regression.ipynb,smollm2:1.7b,1,350.867,nao_executavel,,,pipeline command not configured,evaluation:template;feature_engineering:llm;inference:llm;training:llm,evaluation,2,0.00,0,1,,,,"unterminated string literal (detected at line 36) (<unknown>, line 36)"

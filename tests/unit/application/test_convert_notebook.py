@@ -29,6 +29,31 @@ def test_build_llm_client_returns_client_when_enabled() -> None:
     assert client is not None
 
 
+def test_build_llm_client_passes_configured_timeout(monkeypatch: MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _StubClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        convert_notebook_module,
+        "BaseOpenAICompatibleClient",
+        _StubClient,
+    )
+
+    client = _build_llm_client(
+        ConversionRequest(
+            notebook_path="sample.ipynb",
+            use_llm=True,
+            llm_timeout_seconds=123.0,
+        )
+    )
+
+    assert client is not None
+    assert captured["timeout_seconds"] == 123.0
+
+
 def test_convert_notebook_runs_orchestrator(monkeypatch: MonkeyPatch) -> None:
     captured: dict[str, str] = {}
     notebook = Notebook(

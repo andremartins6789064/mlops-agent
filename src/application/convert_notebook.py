@@ -23,6 +23,7 @@ class ConversionRequest:
     notebook_path: str
     output_dir: str = "output"
     use_llm: bool = False
+    llm_timeout_seconds: float = 300.0
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
@@ -68,4 +69,5 @@ def _build_llm_client(request: ConversionRequest) -> ILLMClient | None:
         base_url=request.llm_base_url or settings.llm_base_url,
         api_key=request.llm_api_key or settings.llm_api_key,
         model=request.llm_model or settings.llm_model,
+        timeout_seconds=request.llm_timeout_seconds,
     )
