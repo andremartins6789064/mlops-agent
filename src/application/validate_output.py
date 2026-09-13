@@ -20,6 +20,7 @@ class ValidationResult:
     type_exit_code: int
     test_exit_code: int
     minimum_coverage: float = 80.0
+    timed_out: bool = False
 
     @property
     def has_errors(self) -> bool:
@@ -30,6 +31,7 @@ class ValidationResult:
             or self.lint_errors > 0
             or self.type_errors > 0
             or self.test_coverage < self.minimum_coverage
+            or self.timed_out
         )
 
 
@@ -42,17 +44,57 @@ def validate_output(
     """Run lint, type-check, and tests for generated project files."""
     root = Path(project_dir)
     root.mkdir(parents=True, exist_ok=True)
+    _ensure_pyproject(root)
+    requirements_args = (
+        ["--with-requirements", "requirements.txt"]
+        if (root / "requirements.txt").exists()
+        else []
+    )
 
     lint = _run_command(
-        ["uv", "run", "ruff", "check", "."], cwd=root, timeout_seconds=timeout_seconds
+        [
+            "uv",
+            "run",
+            "--no-project",
+            *requirements_args,
+            "--with",
+            "ruff",
+            "ruff",
+            "check",
+            ".",
+        ],
+        cwd=root,
+        timeout_seconds=timeout_seconds,
     )
     type_check = _run_command(
-        ["uv", "run", "mypy", ".", "--ignore-missing-imports"],
+        [
+            "uv",
+            "run",
+            "--no-project",
+            *requirements_args,
+            "--with",
+            "mypy",
+            "mypy",
+            ".",
+            "--ignore-missing-imports",
+        ],
         cwd=root,
         timeout_seconds=timeout_seconds,
     )
     tests = _run_command(
-        ["uv", "run", "pytest", "--cov=.", "--cov-report=term-missing"],
+        [
+            "uv",
+            "run",
+            "--no-project",
+            *requirements_args,
+            "--with",
+            "pytest",
+            "--with",
+            "pytest-cov",
+            "pytest",
+            "--cov=src",
+            "--cov-report=term-missing",
+        ],
         cwd=root,
         timeout_seconds=timeout_seconds,
     )
@@ -75,6 +117,7 @@ def validate_output(
         type_exit_code=type_check.exit_code,
         test_exit_code=tests.exit_code,
         minimum_coverage=minimum_coverage,
+        timed_out=lint.timed_out or type_check.timed_out or tests.timed_out,
     )
 
 
@@ -82,6 +125,23 @@ def validate_output(
 class _CommandResult:
     output: str
     exit_code: int
+    timed_out: bool = False
+
+
+def _ensure_pyproject(root: Path) -> None:
+    """Create minimal project metadata before running validation."""
+    pyproject_path = root / "pyproject.toml"
+    if pyproject_path.exists():
+        return
+    pyproject_path.write_text(
+        "[project]\n"
+        'name = "generated-project"\n'
+        'version = "0.1.0"\n'
+        'requires-python = ">=3.11"\n\n'
+        "[tool.pytest.ini_options]\n"
+        'testpaths = ["tests"]\n',
+        encoding="utf-8",
+    )
 
 
 def _run_command(
@@ -90,13 +150,19 @@ def _run_command(
     cwd: Path,
     timeout_seconds: int,
 ) -> _CommandResult:
-    completed = subprocess.run(  # noqa: S603
-        command,
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(  # noqa: S603
+            command,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        output = f"{stdout}\n{stderr}\nCommand timed out after {timeout_seconds}s."
+        return _CommandResult(output=output.strip(), exit_code=124, timed_out=True)
     merged_output = f"{completed.stdout}\n{completed.stderr}".strip()
     return _CommandResult(output=merged_output, exit_code=completed.returncode)
