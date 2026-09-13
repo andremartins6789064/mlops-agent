@@ -8,6 +8,7 @@ from typing import Any
 from src.agents.orchestrator import OrchestrationResult
 from src.application.convert_notebook import ConversionRequest, convert_notebook
 from src.domain.value_objects import QualityMetrics
+from src.shared.progress import ProgressCallback
 from src.ui.session import UIConfig
 
 STAGE_NAMES = ("feature_engineering", "training", "inference", "evaluation")
@@ -20,6 +21,7 @@ def run_conversion(
     config: UIConfig,
     architecture_feedback: str | None = None,
     stage_feedback: dict[str, str] | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> OrchestrationResult:
     """Persist uploaded notebook and run conversion pipeline."""
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -40,6 +42,7 @@ def run_conversion(
         llm_model=config.llm_model,
         architecture_feedback=architecture_feedback,
         stage_feedback=stage_feedback,
+        progress_callback=progress_callback,
     )
     return convert_notebook(request)
 

@@ -14,6 +14,7 @@ from src.application.validate_output import ValidationResult
 from src.domain.entities import PipelineType
 from src.infrastructure.exporters import ZipExporter
 from src.infrastructure.parsers.notebook_parser import NotebookParser
+from src.shared.progress import ProgressEvent
 
 
 def test_orchestrator_returns_valid_analysis_and_plan() -> None:
@@ -142,6 +143,52 @@ def test_orchestrator_generates_tests_and_quality_metrics(tmp_path: Path) -> Non
     ]
     assert sum(record["event"] == "stage_generated" for record in log_records) == 4
     assert any(record["event"] == "review_completed" for record in log_records)
+
+
+def test_orchestrator_emits_progress_events_in_order(tmp_path: Path) -> None:
+    def _validator(project_dir: str) -> ValidationResult:
+        return ValidationResult(
+            lint_errors=0,
+            type_errors=0,
+            test_coverage=85.0,
+            lint_output="",
+            type_output="",
+            test_output="",
+            lint_exit_code=0,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    events: list[ProgressEvent] = []
+    orchestrator = Orchestrator(
+        notebook_parser=NotebookParser(),
+        notebook_analyzer=NotebookAnalyzerAgent(),
+        architecture_agent=ArchitectureAgent(),
+        code_generator=CodeGeneratorAgent(),
+        test_generator=PipelineTestGeneratorAgent(),
+        reviewer=ReviewerAgent(validator=_validator),
+    )
+
+    orchestrator.run(
+        "tests/fixtures/simple_regression.ipynb",
+        output_dir=str(tmp_path),
+        progress_callback=events.append,
+    )
+
+    assert [event.phase for event in events] == [
+        "start",
+        "parse",
+        "analysis",
+        "architecture",
+        "feature_engineering",
+        "training",
+        "inference",
+        "evaluation",
+        "tests",
+        "review",
+    ]
+    assert [event.completed for event in events] == list(range(10))
+    assert all(event.total == 10 for event in events)
 
 
 def test_orchestrator_reviewer_real_validation_meets_threshold(tmp_path: Path) -> None:

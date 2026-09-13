@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from src.shared.progress import ProgressEvent
 from src.ui.pages.common import reset_result_state, set_result_state
 from src.ui.session import CONFIG_KEY, ERROR_KEY, UIConfig, default_config
 from src.ui.workflow import run_conversion
@@ -37,28 +38,35 @@ if submit:
             output_dir=output_dir,
         )
         st.session_state[CONFIG_KEY] = active_config
-        with st.spinner("Executando pipeline de orquestração..."):
-            try:
-                result = run_conversion(
-                    notebook_bytes=uploaded_file.getvalue(),
-                    notebook_name=uploaded_file.name,
-                    config=active_config,
-                )
-                set_result_state(
-                    result=result,
-                    error=None,
-                    notebook_name=uploaded_file.name,
-                    notebook_bytes=uploaded_file.getvalue(),
-                )
-                st.success("Conversão concluída com sucesso.")
-            except Exception as exc:  # pragma: no cover - streamlit runtime branch
-                set_result_state(
-                    result=None,
-                    error=str(exc),
-                    notebook_name=uploaded_file.name,
-                    notebook_bytes=uploaded_file.getvalue(),
-                )
-                st.error(f"Falha na conversão: {exc}")
+        progress_bar = st.progress(0.0, text="Iniciando conversão...")
+        progress_status = st.empty()
+
+        def update_progress(event: ProgressEvent) -> None:
+            progress_bar.progress(event.fraction, text=event.message)
+            progress_status.write(event.message)
+
+        try:
+            result = run_conversion(
+                notebook_bytes=uploaded_file.getvalue(),
+                notebook_name=uploaded_file.name,
+                config=active_config,
+                progress_callback=update_progress,
+            )
+            set_result_state(
+                result=result,
+                error=None,
+                notebook_name=uploaded_file.name,
+                notebook_bytes=uploaded_file.getvalue(),
+            )
+            st.success("Conversão concluída com sucesso.")
+        except Exception as exc:  # pragma: no cover - streamlit runtime branch
+            set_result_state(
+                result=None,
+                error=str(exc),
+                notebook_name=uploaded_file.name,
+                notebook_bytes=uploaded_file.getvalue(),
+            )
+            st.error(f"Falha na conversão: {exc}")
 
 error_message = st.session_state.get(ERROR_KEY)
 if isinstance(error_message, str) and error_message:

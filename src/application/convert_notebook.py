@@ -13,6 +13,7 @@ from src.infrastructure.exporters.zip_exporter import ZipExporter
 from src.infrastructure.llm.base import BaseOpenAICompatibleClient
 from src.infrastructure.parsers.notebook_parser import NotebookParser
 from src.shared.config import settings
+from src.shared.progress import ProgressCallback
 
 
 @dataclass(slots=True)
@@ -27,6 +28,7 @@ class ConversionRequest:
     llm_model: str | None = None
     architecture_feedback: str | None = None
     stage_feedback: dict[str, str] | None = None
+    progress_callback: ProgressCallback | None = None
 
 
 def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
@@ -47,7 +49,16 @@ def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
         reviewer=ReviewerAgent(llm_client=llm_client),
         exporter=ZipExporter(),
     )
-    return orchestrator.run(request.notebook_path, output_dir=request.output_dir)
+    if request.progress_callback is None:
+        return orchestrator.run(
+            request.notebook_path,
+            output_dir=request.output_dir,
+        )
+    return orchestrator.run(
+        request.notebook_path,
+        output_dir=request.output_dir,
+        progress_callback=request.progress_callback,
+    )
 
 
 def _build_llm_client(request: ConversionRequest) -> ILLMClient | None:

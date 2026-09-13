@@ -14,6 +14,7 @@ from src.domain.entities import Notebook, Pipeline, PipelineStage, PipelineType
 from src.domain.interfaces import IExporter, INotebookParser
 from src.domain.value_objects import QualityMetrics
 from src.shared.logger import StructuredExecutionLogger
+from src.shared.progress import ProgressCallback, ProgressEvent
 from src.shared.provenance import StageProvenance
 from src.shared.python_source import extract_imported_libraries
 
@@ -64,11 +65,36 @@ class Orchestrator:
         notebook_path: str,
         *,
         output_dir: str | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> OrchestrationResult:
         """Run analysis, architecture planning, and optional code generation."""
+        self._notify(
+            progress_callback,
+            phase="start",
+            message="Iniciando conversão.",
+            completed=0,
+        )
         notebook = self._notebook_parser.parse(notebook_path)
+        self._notify(
+            progress_callback,
+            phase="parse",
+            message="Notebook carregado.",
+            completed=1,
+        )
         notebook_analysis = self._notebook_analyzer.analyze(notebook)
+        self._notify(
+            progress_callback,
+            phase="analysis",
+            message="Análise do notebook concluída.",
+            completed=2,
+        )
         architecture_plan = self._architecture_agent.plan(notebook_analysis)
+        self._notify(
+            progress_callback,
+            phase="architecture",
+            message="Plano de arquitetura concluído.",
+            completed=3,
+        )
 
         run_output_dir = output_dir
         if run_output_dir is None and (
@@ -99,6 +125,7 @@ class Orchestrator:
                 notebook=notebook,
                 notebook_analysis=notebook_analysis,
                 architecture_plan=architecture_plan,
+                progress_callback=progress_callback,
             )
             if run_output_dir is not None:
                 generated_file_paths = self._code_generator.write_modules(
@@ -124,6 +151,12 @@ class Orchestrator:
                     generated_tests=generated_tests,
                     output_dir=tests_dir,
                 )
+            self._notify(
+                progress_callback,
+                phase="tests",
+                message="Testes gerados.",
+                completed=8,
+            )
 
         if (
             self._reviewer is not None
@@ -138,6 +171,12 @@ class Orchestrator:
             )
             quality_metrics = review_result.quality_metrics
             validation_result = review_result.validation_result
+            self._notify(
+                progress_callback,
+                phase="review",
+                message="Revisão e validação concluídas.",
+                completed=9,
+            )
             if execution_logger is not None:
                 execution_logger.log(
                     "review_completed",
@@ -167,6 +206,12 @@ class Orchestrator:
                     generated_modules=generated_modules,
                 ),
             )
+            self._notify(
+                progress_callback,
+                phase="export",
+                message="Exportação do projeto concluída.",
+                completed=10,
+            )
 
         if execution_logger is not None:
             execution_logger.log(
@@ -194,6 +239,24 @@ class Orchestrator:
                 str(execution_logger.log_path) if execution_logger is not None else None
             ),
         )
+
+    @staticmethod
+    def _notify(
+        callback: ProgressCallback | None,
+        *,
+        phase: str,
+        message: str,
+        completed: int,
+    ) -> None:
+        if callback is not None:
+            callback(
+                ProgressEvent(
+                    phase=phase,
+                    message=message,
+                    completed=completed,
+                    total=10,
+                )
+            )
 
     def _build_pipeline(
         self,

@@ -9,6 +9,7 @@ from src.domain.entities import Notebook
 from src.domain.interfaces import ILLMClient
 from src.shared.config import settings
 from src.shared.llm_parsing import parse_json_object, parse_python_block
+from src.shared.progress import ProgressCallback, ProgressEvent
 from src.shared.provenance import StageProvenance
 from src.shared.python_source import python_syntax_error
 
@@ -43,6 +44,7 @@ class CodeGeneratorAgent:
         notebook: Notebook,
         notebook_analysis: dict[str, Any],
         architecture_plan: dict[str, Any],
+        progress_callback: ProgressCallback | None = None,
     ) -> dict[str, str]:
         """Return generated python source code for all pipeline modules."""
         modules = ["feature_engineering", "training", "inference", "evaluation"]
@@ -75,6 +77,15 @@ class CodeGeneratorAgent:
                 context_truncated=self._last_context_truncated,
                 parse_method=parse_method,
             )
+            if progress_callback is not None:
+                progress_callback(
+                    ProgressEvent(
+                        phase=module_name,
+                        message=f"Estágio concluído: {module_name}.",
+                        completed=4 + modules.index(module_name),
+                        total=10,
+                    )
+                )
         return generated
 
     @property
