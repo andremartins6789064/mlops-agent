@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
-from typing import Any
 
 from src.domain.interfaces import ILLMClient
+from src.shared.llm_parsing import parse_json_object, parse_python_block
 
 
 class PipelineTestGeneratorAgent:
@@ -62,13 +61,14 @@ class PipelineTestGeneratorAgent:
             return None
         prompt = self._build_prompt(stage_name=stage_name, module_code=module_code)
         raw_response = self._llm_client.generate(prompt=prompt)
-        parsed = self._parse_json_response(raw_response)
+        parsed = parse_json_object(raw_response).value
         if isinstance(parsed, dict):
             test_code = parsed.get("test_code")
             if isinstance(test_code, str) and "def test_" in test_code:
                 return test_code.strip()
-        if "def test_" in raw_response:
-            return self._extract_python_block(raw_response).strip()
+        python_code = parse_python_block(raw_response).value
+        if isinstance(python_code, str) and "def test_" in python_code:
+            return python_code
         return None
 
     def _generate_test_with_templates(self, *, stage_name: str) -> str:
@@ -86,33 +86,6 @@ class PipelineTestGeneratorAgent:
         prompt_template = Path(self._prompt_path).read_text(encoding="utf-8")
         payload = {"stage_name": stage_name, "module_code": module_code}
         return f"{prompt_template}\n\nContext JSON:\n{json.dumps(payload)}"
-
-    def _parse_json_response(self, raw_response: str) -> Any | None:
-        try:
-            return json.loads(raw_response)
-        except json.JSONDecodeError:
-            pass
-        fenced_match = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```",
-            raw_response,
-            re.DOTALL,
-        )
-        if fenced_match is not None:
-            try:
-                return json.loads(fenced_match.group(1))
-            except json.JSONDecodeError:
-                return None
-        return None
-
-    def _extract_python_block(self, raw_response: str) -> str:
-        python_match = re.search(
-            r"```(?:python)?\s*(.*?)\s*```",
-            raw_response,
-            re.DOTALL,
-        )
-        if python_match is not None:
-            return python_match.group(1)
-        return raw_response
 
     def _feature_engineering_tests(self) -> str:
         return (

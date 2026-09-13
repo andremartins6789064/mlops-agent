@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 from src.domain.entities import Notebook
 from src.domain.interfaces import ILLMClient
+from src.shared.llm_parsing import parse_json_object, parse_python_block
 
 
 class CodeGeneratorAgent:
@@ -87,13 +87,14 @@ class CodeGeneratorAgent:
             architecture_plan=architecture_plan,
         )
         raw_response = self._llm_client.generate(prompt=prompt)
-        parsed_payload = self._parse_json_response(raw_response)
+        parsed_payload = parse_json_object(raw_response).value
         if isinstance(parsed_payload, dict):
             module_code = parsed_payload.get("module_code")
             if isinstance(module_code, str) and "def " in module_code:
                 return module_code.strip()
-        if "def " in raw_response:
-            return self._extract_python_block(raw_response).strip()
+        python_code = parse_python_block(raw_response).value
+        if isinstance(python_code, str):
+            return python_code
         return None
 
     def _generate_module_with_templates(
@@ -229,29 +230,3 @@ class CodeGeneratorAgent:
             'generated from architecture plan."""\n'
             "    return None\n"
         )
-
-    def _parse_json_response(self, raw_response: str) -> Any | None:
-        try:
-            return json.loads(raw_response)
-        except json.JSONDecodeError:
-            pass
-
-        fenced_match = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```",
-            raw_response,
-            re.DOTALL,
-        )
-        if fenced_match is not None:
-            try:
-                return json.loads(fenced_match.group(1))
-            except json.JSONDecodeError:
-                return None
-        return None
-
-    def _extract_python_block(self, raw_response: str) -> str:
-        python_match = re.search(
-            r"```(?:python)?\s*(.*?)\s*```", raw_response, re.DOTALL
-        )
-        if python_match is not None:
-            return python_match.group(1)
-        return raw_response

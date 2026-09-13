@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any, cast
 
 from src.domain.interfaces import ILLMClient
+from src.shared.llm_parsing import parse_json_object
 
 
 class ArchitectureAgent:
@@ -39,7 +39,7 @@ class ArchitectureAgent:
             return None
         prompt = self._build_prompt(notebook_analysis)
         raw_response = self._llm_client.generate(prompt=prompt)
-        parsed = self._parse_json_response(raw_response)
+        parsed = parse_json_object(raw_response).value
         if parsed is None:
             return None
         if not self._is_valid_plan(parsed):
@@ -120,26 +120,3 @@ class ArchitectureAgent:
             ):
                 return False
         return True
-
-    def _parse_json_response(self, raw_response: str) -> Any | None:
-        try:
-            return json.loads(raw_response)
-        except json.JSONDecodeError:
-            pass
-
-        fenced_match = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```", raw_response, re.DOTALL
-        )
-        if fenced_match is not None:
-            try:
-                return json.loads(fenced_match.group(1))
-            except json.JSONDecodeError:
-                return None
-
-        object_match = re.search(r"\{.*\}", raw_response, re.DOTALL)
-        if object_match is not None:
-            try:
-                return json.loads(object_match.group(0))
-            except json.JSONDecodeError:
-                return None
-        return None

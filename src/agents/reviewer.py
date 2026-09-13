@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from src.application.validate_output import ValidationResult, validate_output
 from src.domain.interfaces import ILLMClient
 from src.domain.value_objects import QualityMetrics
+from src.shared.llm_parsing import parse_json_object, parse_python_block
 
 
 @dataclass(slots=True)
@@ -125,41 +124,13 @@ class ReviewerAgent:
                 f"Context JSON:\n{json.dumps(payload, ensure_ascii=True)}"
             )
             raw_response = self._llm_client.generate(prompt=prompt)
-            parsed = self._parse_json_response(raw_response)
+            parsed = parse_json_object(raw_response).value
             if isinstance(parsed, dict):
                 module_code = parsed.get("module_code")
                 if isinstance(module_code, str) and "def " in module_code:
                     fixed_modules[stage_name] = module_code.strip()
                     continue
-            if "def " in raw_response:
-                fixed_modules[stage_name] = self._extract_python_block(
-                    raw_response
-                ).strip()
+            python_code = parse_python_block(raw_response).value
+            if isinstance(python_code, str):
+                fixed_modules[stage_name] = python_code
         return fixed_modules
-
-    def _parse_json_response(self, raw_response: str) -> Any | None:
-        try:
-            return json.loads(raw_response)
-        except json.JSONDecodeError:
-            pass
-        fenced_match = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```",
-            raw_response,
-            re.DOTALL,
-        )
-        if fenced_match is not None:
-            try:
-                return json.loads(fenced_match.group(1))
-            except json.JSONDecodeError:
-                return None
-        return None
-
-    def _extract_python_block(self, raw_response: str) -> str:
-        python_match = re.search(
-            r"```(?:python)?\s*(.*?)\s*```",
-            raw_response,
-            re.DOTALL,
-        )
-        if python_match is not None:
-            return python_match.group(1)
-        return raw_response
