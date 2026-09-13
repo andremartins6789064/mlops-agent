@@ -180,6 +180,43 @@ def test_code_generator_handles_empty_stage_cells() -> None:
     assert payload["stage_cells"]["truncated"] is False
 
 
+def test_code_generator_records_template_provenance_for_malformed_response() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    agent = CodeGeneratorAgent(llm_client=_StubLLMClient("not valid"))
+
+    agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={"cells_by_pipeline": {"training": [3]}},
+        architecture_plan=_sample_plan(),
+    )
+
+    provenance = agent.stage_provenance["feature_engineering"]
+    assert provenance.origin == "template"
+    assert provenance.fallback_reason is not None
+    assert "Unable to parse" in provenance.fallback_reason
+    assert provenance.duration_seconds >= 0
+
+
+def test_code_generator_records_llm_provenance_for_valid_response() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    llm = _StubLLMClient(
+        json.dumps({"module_code": "def custom_stage() -> int:\n    return 1\n"})
+    )
+    agent = CodeGeneratorAgent(llm_client=llm)
+
+    agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={"cells_by_pipeline": {"training": [3]}},
+        architecture_plan=_sample_plan(),
+    )
+
+    provenance = agent.stage_provenance["feature_engineering"]
+    assert provenance.origin == "llm"
+    assert provenance.fallback_reason is None
+    assert provenance.parse_method == "direct"
+    assert provenance.model == "smollm2:1.7b"
+
+
 def test_code_generator_prompt_requires_faithful_notebook_refactoring() -> None:
     notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
     agent = CodeGeneratorAgent()

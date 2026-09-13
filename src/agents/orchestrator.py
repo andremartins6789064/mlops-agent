@@ -12,6 +12,8 @@ from src.agents.test_generator import PipelineTestGeneratorAgent
 from src.domain.entities import Notebook, Pipeline, PipelineStage, PipelineType
 from src.domain.interfaces import IExporter, INotebookParser
 from src.domain.value_objects import QualityMetrics
+from src.shared.logger import StructuredExecutionLogger
+from src.shared.provenance import StageProvenance
 
 
 @dataclass(slots=True)
@@ -25,8 +27,10 @@ class OrchestrationResult:
     generated_file_paths: dict[str, str] | None = None
     generated_tests: dict[str, str] | None = None
     generated_test_file_paths: dict[str, str] | None = None
+    stage_provenance: dict[str, StageProvenance] | None = None
     quality_metrics: QualityMetrics | None = None
     exported_zip_path: str | None = None
+    execution_log_path: str | None = None
 
 
 class Orchestrator:
@@ -69,6 +73,13 @@ class Orchestrator:
             or self._reviewer is not None
         ):
             run_output_dir = "output"
+        execution_logger = (
+            StructuredExecutionLogger(Path(run_output_dir) / "execution.log")
+            if run_output_dir is not None
+            else None
+        )
+        if execution_logger is not None:
+            execution_logger.log("execution_started", notebook_path=notebook_path)
 
         generated_modules: dict[str, str] | None = None
         generated_file_paths: dict[str, str] | None = None
@@ -76,6 +87,7 @@ class Orchestrator:
         generated_test_file_paths: dict[str, str] | None = None
         quality_metrics: QualityMetrics | None = None
         exported_zip_path: str | None = None
+        stage_provenance: dict[str, StageProvenance] = {}
 
         if self._code_generator is not None:
             generated_modules = self._code_generator.generate_modules(
@@ -88,6 +100,14 @@ class Orchestrator:
                     generated_modules=generated_modules,
                     output_dir=run_output_dir,
                 )
+            stage_provenance = self._code_generator.stage_provenance
+            if execution_logger is not None:
+                for stage_name, provenance in stage_provenance.items():
+                    execution_logger.log(
+                        "stage_generated",
+                        stage=stage_name,
+                        **provenance.to_dict(),
+                    )
 
         if self._test_generator is not None and generated_modules is not None:
             generated_tests = self._test_generator.generate_tests(
@@ -112,6 +132,13 @@ class Orchestrator:
                 generated_tests=generated_tests,
             )
             quality_metrics = review_result.quality_metrics
+            if execution_logger is not None:
+                execution_logger.log(
+                    "review_completed",
+                    iterations=review_result.iterations,
+                    has_errors=review_result.validation_result.has_errors,
+                    test_coverage=review_result.quality_metrics.test_coverage,
+                )
 
         if (
             self._exporter is not None
@@ -132,6 +159,13 @@ class Orchestrator:
                 libraries=notebook_analysis.get("libraries", []),
             )
 
+        if execution_logger is not None:
+            execution_logger.log(
+                "execution_completed",
+                stages=list(stage_provenance),
+                exported_zip_path=exported_zip_path,
+            )
+
         return OrchestrationResult(
             notebook=notebook,
             notebook_analysis=notebook_analysis,
@@ -140,8 +174,12 @@ class Orchestrator:
             generated_file_paths=generated_file_paths,
             generated_tests=generated_tests,
             generated_test_file_paths=generated_test_file_paths,
+            stage_provenance=stage_provenance,
             quality_metrics=quality_metrics,
             exported_zip_path=exported_zip_path,
+            execution_log_path=(
+                str(execution_logger.log_path) if execution_logger is not None else None
+            ),
         )
 
     def _build_pipeline(

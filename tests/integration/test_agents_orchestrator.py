@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -121,6 +122,26 @@ def test_orchestrator_generates_tests_and_quality_metrics(tmp_path: Path) -> Non
     assert len(result.generated_test_file_paths) == 4
     assert result.quality_metrics is not None
     assert result.quality_metrics.test_coverage == 85.0
+    assert result.stage_provenance is not None
+    assert set(result.stage_provenance) == {
+        "feature_engineering",
+        "training",
+        "inference",
+        "evaluation",
+    }
+    assert all(
+        provenance.origin == "template"
+        for provenance in result.stage_provenance.values()
+    )
+    assert result.execution_log_path is not None
+    log_records = [
+        json.loads(line)
+        for line in Path(result.execution_log_path)
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert sum(record["event"] == "stage_generated" for record in log_records) == 4
+    assert any(record["event"] == "review_completed" for record in log_records)
 
 
 def test_orchestrator_reviewer_real_validation_meets_threshold(tmp_path: Path) -> None:

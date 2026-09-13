@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
 from src.domain.entities import Notebook
 from src.domain.interfaces import ILLMClient
+from src.shared.config import settings
 from src.shared.llm_parsing import parse_json_object, parse_python_block
+from src.shared.provenance import StageProvenance
 
 
 class CodeGeneratorAgent:
@@ -25,6 +28,8 @@ class CodeGeneratorAgent:
         self._llm_client = llm_client
         self._prompt_path = prompt_path
         self._context_budget_chars = context_budget_chars
+        self._stage_provenance: dict[str, StageProvenance] = {}
+        self._last_context_truncated = False
         self._stage_feedback = {
             key: value.strip()
             for key, value in (stage_feedback or {}).items()
@@ -41,8 +46,11 @@ class CodeGeneratorAgent:
         """Return generated python source code for all pipeline modules."""
         modules = ["feature_engineering", "training", "inference", "evaluation"]
         generated: dict[str, str] = {}
+        self._stage_provenance = {}
         for module_name in modules:
-            llm_code = self._generate_module_with_llm(
+            started_at = time.perf_counter()
+            self._last_context_truncated = False
+            llm_code, parse_method, fallback_reason = self._generate_module_with_llm(
                 module_name=module_name,
                 notebook=notebook,
                 notebook_analysis=notebook_analysis,
@@ -50,13 +58,28 @@ class CodeGeneratorAgent:
             )
             if llm_code is not None:
                 generated[module_name] = llm_code
-                continue
-            generated[module_name] = self._generate_module_with_templates(
-                module_name=module_name,
-                notebook_analysis=notebook_analysis,
-                architecture_plan=architecture_plan,
+                origin = "llm"
+            else:
+                generated[module_name] = self._generate_module_with_templates(
+                    module_name=module_name,
+                    notebook_analysis=notebook_analysis,
+                    architecture_plan=architecture_plan,
+                )
+                origin = "template"
+            self._stage_provenance[module_name] = StageProvenance(
+                origin=origin,
+                fallback_reason=fallback_reason,
+                model=self._model_name(),
+                duration_seconds=time.perf_counter() - started_at,
+                context_truncated=self._last_context_truncated,
+                parse_method=parse_method,
             )
         return generated
+
+    @property
+    def stage_provenance(self) -> dict[str, StageProvenance]:
+        """Return provenance for the most recent module generation."""
+        return dict(self._stage_provenance)
 
     def write_modules(
         self,
@@ -81,9 +104,9 @@ class CodeGeneratorAgent:
         notebook: Notebook,
         notebook_analysis: dict[str, Any],
         architecture_plan: dict[str, Any],
-    ) -> str | None:
+    ) -> tuple[str | None, str | None, str | None]:
         if self._llm_client is None:
-            return None
+            return None, None, "LLM client is not configured"
         prompt = self._build_prompt(
             module_name=module_name,
             notebook=notebook,
@@ -91,15 +114,22 @@ class CodeGeneratorAgent:
             architecture_plan=architecture_plan,
         )
         raw_response = self._llm_client.generate(prompt=prompt)
-        parsed_payload = parse_json_object(raw_response).value
+        json_result = parse_json_object(raw_response)
+        parsed_payload = json_result.value
         if isinstance(parsed_payload, dict):
             module_code = parsed_payload.get("module_code")
             if isinstance(module_code, str) and "def " in module_code:
-                return module_code.strip()
-        python_code = parse_python_block(raw_response).value
+                return module_code.strip(), json_result.method, None
+        python_result = parse_python_block(raw_response)
+        python_code = python_result.value
         if isinstance(python_code, str):
-            return python_code
-        return None
+            return python_code, python_result.method, None
+        return (
+            None,
+            None,
+            f"Unable to parse LLM response (JSON: {json_result.method}; "
+            f"Python: {python_result.method})",
+        )
 
     def _generate_module_with_templates(
         self,
@@ -153,6 +183,7 @@ class CodeGeneratorAgent:
             notebook=notebook,
             notebook_analysis=notebook_analysis,
         )
+        self._last_context_truncated = bool(stage_cells["truncated"])
         payload = {
             "module_name": module_name,
             "notebook_path": notebook.path,
@@ -162,6 +193,18 @@ class CodeGeneratorAgent:
             "stage_feedback": self._stage_feedback.get(module_name),
         }
         return f"{prompt_template}\n\nGeneration context JSON:\n{json.dumps(payload)}"
+
+    def _model_name(self) -> str | None:
+        """Return the configured model name when available."""
+        if self._llm_client is None:
+            return None
+        model = getattr(self._llm_client, "model", None)
+        if isinstance(model, str):
+            return model
+        private_model = getattr(self._llm_client, "_model", None)
+        if isinstance(private_model, str):
+            return private_model
+        return settings.llm_model
 
     def _build_stage_cell_context(
         self,
