@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from typing import Any, cast
 
 import streamlit as st
 
 from src.agents.orchestrator import OrchestrationResult
-from src.ui.components import render_code_viewer
+from src.ui.components import render_code_viewer, render_stage_provenance
 from src.ui.session import (
     CONFIG_KEY,
     ERROR_KEY,
@@ -31,7 +33,8 @@ def render_missing_result_message() -> None:
 
 def read_result() -> OrchestrationResult | None:
     """Read result object from Streamlit session state."""
-    return get_result(st.session_state)
+    state = cast(Mapping[str, Any], st.session_state)
+    return get_result(state)
 
 
 def render_stage_page(*, stage_name: str, title: str) -> None:
@@ -42,6 +45,10 @@ def render_stage_page(*, stage_name: str, title: str) -> None:
         render_missing_result_message()
         return
 
+    render_stage_provenance(
+        stage_name=stage_name,
+        provenance=(result.stage_provenance or {}).get(stage_name),
+    )
     render_code_viewer(
         title="Módulo gerado",
         source_code=get_stage_code(result, stage_name=stage_name),
@@ -69,6 +76,12 @@ def render_analysis_blocks(result: OrchestrationResult) -> None:
     st.json(result.notebook_analysis)
     st.subheader("Plano de arquitetura")
     st.json(result.architecture_plan)
+    st.subheader("Proveniência por estágio")
+    for stage_name in STAGE_NAMES:
+        render_stage_provenance(
+            stage_name=stage_name,
+            provenance=(result.stage_provenance or {}).get(stage_name),
+        )
     st.subheader("Resumo rápido")
     st.write(summarize_review_status(result.quality_metrics))
 

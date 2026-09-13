@@ -6,7 +6,8 @@ from typing import Any
 from src.agents.orchestrator import OrchestrationResult
 from src.domain.entities import CellType, Notebook, NotebookCell
 from src.domain.value_objects import QualityMetrics
-from src.ui.components import code_viewer, metrics_card
+from src.shared.provenance import StageProvenance
+from src.ui.components import code_viewer, metrics_card, provenance_card
 from src.ui.pages import common
 from src.ui.session import (
     CONFIG_KEY,
@@ -100,6 +101,14 @@ def _build_result(tmp_path: Any) -> OrchestrationResult:
         generated_file_paths={"training": "output/training.py"},
         generated_tests={"training": "def test_training() -> None:\n    assert True\n"},
         generated_test_file_paths={"training": "output/tests/test_training.py"},
+        stage_provenance={
+            "training": StageProvenance(
+                origin="llm",
+                model="test-model",
+                duration_seconds=1.25,
+                parse_method="raw",
+            )
+        },
         quality_metrics=QualityMetrics(test_coverage=88.0),
         exported_zip_path=str(zip_path),
     )
@@ -130,6 +139,11 @@ def test_common_helpers_update_session_and_render(
     fake_st.session_state[CONFIG_KEY] = UIConfig()
     fake_st.session_state[NOTEBOOK_BYTES_KEY] = b"{}"
     monkeypatch.setattr(common, "st", fake_st)
+    monkeypatch.setattr(
+        common,
+        "render_stage_provenance",
+        lambda **kwargs: fake_st.messages.append(f"provenance:{kwargs['stage_name']}"),
+    )
     monkeypatch.setattr(common, "run_conversion", lambda **kwargs: result)
 
     common.reset_result_state()
@@ -153,6 +167,38 @@ def test_common_helpers_update_session_and_render(
     assert any("Saída do Notebook Analyzer" in message for message in fake_st.messages)
     assert any("Arquivos de módulos gerados" in message for message in fake_st.messages)
     assert any("Baixar projeto gerado" in message for message in fake_st.messages)
+    assert any("provenance:training" in message for message in fake_st.messages)
+
+
+def test_provenance_card_distinguishes_llm_and_template(
+    monkeypatch: Any,
+) -> None:
+    fake_st = _FakeStreamlit()
+    monkeypatch.setattr(provenance_card, "st", fake_st)
+
+    provenance_card.render_stage_provenance(
+        stage_name="training",
+        provenance=StageProvenance(
+            origin="llm",
+            model="test-model",
+            duration_seconds=1.5,
+            parse_method="fenced",
+        ),
+    )
+    provenance_card.render_stage_provenance(
+        stage_name="evaluation",
+        provenance=StageProvenance(
+            origin="template",
+            fallback_reason="invalid response",
+        ),
+    )
+
+    assert any("código gerado pela LLM" in message for message in fake_st.messages)
+    assert any("código gerado por template" in message for message in fake_st.messages)
+    assert any(
+        "Motivo do fallback: invalid response" in message
+        for message in fake_st.messages
+    )
 
 
 def test_common_missing_result_path(monkeypatch: Any) -> None:

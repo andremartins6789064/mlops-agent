@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 from src.domain.interfaces import ILLMClient
 from src.shared.exceptions import LLMClientError
@@ -26,7 +27,7 @@ class BaseOpenAICompatibleClient(ILLMClient):
 
     def generate(self, prompt: str, *, system_prompt: str | None = None) -> str:
         """Generate text from user prompt and optional system instruction."""
-        messages: list[dict[str, str]] = []
+        messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})

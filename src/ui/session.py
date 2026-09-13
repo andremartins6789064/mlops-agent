@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,7 +29,7 @@ def default_config() -> UIConfig:
     return UIConfig()
 
 
-def get_result(state: dict[str, Any]) -> OrchestrationResult | None:
+def get_result(state: Mapping[str, Any]) -> OrchestrationResult | None:
     """Safely read the orchestration result from session state."""
     value = state.get(RESULT_KEY)
     if isinstance(value, OrchestrationResult):
