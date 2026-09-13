@@ -51,6 +51,33 @@ def test_test_generator_uses_llm_test_code_when_available() -> None:
     assert tests["feature_engineering"].startswith("def test_custom")
 
 
+def test_test_generator_accepts_fenced_python_with_surrounding_prose() -> None:
+    response = (
+        "Here is the test file:\n"
+        "```python\ndef test_custom() -> None:\n    assert True\n```\n"
+        "Done."
+    )
+    generator = PipelineTestGeneratorAgent(llm_client=_StubLLMClient(response))
+
+    tests = generator.generate_tests(
+        generated_modules={"training": "def train_model() -> None:\n    pass\n"}
+    )
+
+    assert tests["training"].startswith("def test_custom")
+
+
+def test_test_generator_accepts_raw_python_response() -> None:
+    generator = PipelineTestGeneratorAgent(
+        llm_client=_StubLLMClient("def test_custom() -> None:\n    assert True\n")
+    )
+
+    tests = generator.generate_tests(
+        generated_modules={"training": "def train_model() -> None:\n    pass\n"}
+    )
+
+    assert tests["training"].startswith("def test_custom")
+
+
 def test_test_generator_writes_tests_to_disk(tmp_path: Path) -> None:
     generator = PipelineTestGeneratorAgent()
     file_map = generator.write_tests(

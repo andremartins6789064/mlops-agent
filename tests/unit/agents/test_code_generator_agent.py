@@ -68,6 +68,40 @@ def test_code_generator_uses_llm_module_code_when_valid_json() -> None:
     assert "def custom_stage" in generated["feature_engineering"]
 
 
+def test_code_generator_prefers_fenced_python_with_surrounding_prose() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    response = (
+        "I preserved the notebook logic.\n"
+        "```python\ndef custom_stage() -> int:\n    return 1\n```\n"
+        "This is the complete module."
+    )
+    llm = _StubLLMClient(response)
+    agent = CodeGeneratorAgent(llm_client=llm)
+
+    generated = agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={"libraries": []},
+        architecture_plan=_sample_plan(),
+    )
+
+    assert generated["feature_engineering"].startswith("def custom_stage")
+    assert agent.stage_provenance["feature_engineering"].parse_method == "fenced"
+
+
+def test_code_generator_accepts_raw_python_legacy_response() -> None:
+    notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
+    llm = _StubLLMClient("def custom_stage() -> int:\n    return 1\n")
+    agent = CodeGeneratorAgent(llm_client=llm)
+
+    generated = agent.generate_modules(
+        notebook=notebook,
+        notebook_analysis={"libraries": []},
+        architecture_plan=_sample_plan(),
+    )
+
+    assert generated["feature_engineering"].startswith("def custom_stage")
+
+
 def test_code_generator_writes_modules_to_output_dir(tmp_path: Path) -> None:
     notebook = NotebookParser().parse("tests/fixtures/simple_regression.ipynb")
     agent = CodeGeneratorAgent()
@@ -234,3 +268,5 @@ def test_code_generator_prompt_requires_faithful_notebook_refactoring() -> None:
     assert "Preserve the notebook's logic" in prompt
     assert "Do not invent new behavior" in prompt
     assert "Convert global state into explicit function arguments" in prompt
+    assert "python` fenced block" in prompt
+    assert "Legacy JSON" in prompt

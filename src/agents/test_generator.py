@@ -61,12 +61,17 @@ class PipelineTestGeneratorAgent:
             return None
         prompt = self._build_prompt(stage_name=stage_name, module_code=module_code)
         raw_response = self._llm_client.generate(prompt=prompt)
+        python_result = parse_python_block(raw_response)
+        if python_result.method == "fenced" and isinstance(python_result.value, str):
+            if "def test_" in python_result.value:
+                return python_result.value
+            return None
         parsed = parse_json_object(raw_response).value
         if isinstance(parsed, dict):
             test_code = parsed.get("test_code")
             if isinstance(test_code, str) and "def test_" in test_code:
                 return test_code.strip()
-        python_code = parse_python_block(raw_response).value
+        python_code = python_result.value
         if isinstance(python_code, str) and "def test_" in python_code:
             return python_code
         return None

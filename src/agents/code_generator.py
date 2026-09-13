@@ -114,13 +114,15 @@ class CodeGeneratorAgent:
             architecture_plan=architecture_plan,
         )
         raw_response = self._llm_client.generate(prompt=prompt)
+        python_result = parse_python_block(raw_response)
+        if python_result.method == "fenced" and isinstance(python_result.value, str):
+            return python_result.value, python_result.method, None
         json_result = parse_json_object(raw_response)
         parsed_payload = json_result.value
         if isinstance(parsed_payload, dict):
             module_code = parsed_payload.get("module_code")
             if isinstance(module_code, str) and "def " in module_code:
                 return module_code.strip(), json_result.method, None
-        python_result = parse_python_block(raw_response)
         python_code = python_result.value
         if isinstance(python_code, str):
             return python_code, python_result.method, None

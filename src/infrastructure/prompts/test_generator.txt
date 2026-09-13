@@ -7,12 +7,9 @@ Follow these internal steps before final output:
 3) Include minimal fixtures/mocks only if required.
 
 Requirements:
-- Return executable Python test code.
+- Return the complete executable Python test file inside one `python` fenced block.
 - Use English names and docstrings.
 - Keep compatibility with Ruff and mypy strict mode.
-- No markdown around final code.
-
-Optional JSON output format:
-{
-  "test_code": "<complete pytest file>"
-}
+- Do not add explanations before or after the fenced block.
+- Do not wrap the code in JSON. Legacy JSON with a `test_code` field is accepted
+  only as a compatibility fallback.
