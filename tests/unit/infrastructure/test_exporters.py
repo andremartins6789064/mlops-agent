@@ -53,7 +53,7 @@ def test_file_system_writer_creates_expected_artifacts(tmp_path: Path) -> None:
         generated_tests={"inference": "def test_predict() -> None:\n    assert True\n"},
     )
     writer.write_requirements(
-        project_root=str(root), libraries=["numpy", "pandas", "numpy"]
+        project_root=str(root), libraries=["numpy", "pandas", "numpy", "sklearn"]
     )
     writer.write_readme(
         project_root=str(root), project_name="demo", libraries=["numpy"]
@@ -62,7 +62,9 @@ def test_file_system_writer_creates_expected_artifacts(tmp_path: Path) -> None:
 
     assert (root / "src" / "inference.py").exists()
     assert (root / "tests" / "test_inference.py").exists()
-    assert (root / "requirements.txt").read_text(encoding="utf-8") == "numpy\npandas\n"
+    assert (root / "requirements.txt").read_text(
+        encoding="utf-8"
+    ) == "numpy\npandas\nscikit-learn\n"
     assert (root / "README.md").exists()
     assert (root / "pyproject.toml").exists()
 

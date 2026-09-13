@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+_PACKAGE_NAME_ALIASES = {
+    "sklearn": "scikit-learn",
+}
+
 
 class FileSystemOutputWriter:
     """Write generated project artifacts to disk."""
@@ -34,7 +38,9 @@ class FileSystemOutputWriter:
         self, *, project_root: str, libraries: list[str] | None = None
     ) -> str:
         requirements_path = Path(project_root) / "requirements.txt"
-        normalized = sorted(set(libraries or []))
+        normalized = sorted(
+            {_PACKAGE_NAME_ALIASES.get(library, library) for library in libraries or []}
+        )
         requirements_path.write_text(
             "\n".join(normalized) + ("\n" if normalized else "")
         )
