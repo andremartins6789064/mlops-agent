@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from src.application.validate_output import ValidationResult, validate_output
 from src.domain.interfaces import ILLMClient
@@ -18,6 +20,8 @@ class ReviewerResult:
     validation_result: ValidationResult
     quality_metrics: QualityMetrics
     iterations: int
+    review_incomplete: bool = False
+    review_error: str | None = None
 
 
 class ReviewerAgent:
@@ -30,11 +34,22 @@ class ReviewerAgent:
         llm_client: ILLMClient | None = None,
         prompt_path: str = "src/infrastructure/prompts/reviewer.txt",
         max_iterations: int = 2,
+        context_budget_tokens: int = 2_000,
+        inter_call_delay_seconds: float = 0.0,
     ) -> None:
+        if context_budget_tokens <= 0:
+            raise ValueError("context_budget_tokens must be positive")
+        if inter_call_delay_seconds < 0:
+            raise ValueError("inter_call_delay_seconds cannot be negative")
         self._validator = validator or validate_output
         self._llm_client = llm_client
         self._prompt_path = prompt_path
         self._max_iterations = max_iterations
+        self._context_budget_tokens = context_budget_tokens
+        self._inter_call_delay_seconds = inter_call_delay_seconds
+        self._current_tests: dict[str, str] = {}
+        self._last_review_incomplete = False
+        self._last_review_error: str | None = None
 
     def review(
         self,
@@ -49,6 +64,9 @@ class ReviewerAgent:
         project_path = Path(project_dir)
         iterations = 0
         current_modules = dict(generated_modules)
+        self._current_tests = dict(generated_tests)
+        self._last_review_incomplete = False
+        self._last_review_error = None
         active_fixer = fixer
         if active_fixer is None and self._llm_client is not None:
             active_fixer = self._fix_with_llm
@@ -80,6 +98,8 @@ class ReviewerAgent:
             validation_result=validation,
             quality_metrics=quality,
             iterations=iterations,
+            review_incomplete=self._last_review_incomplete,
+            review_error=self._last_review_error,
         )
 
     def _write_modules(
@@ -114,24 +134,126 @@ class ReviewerAgent:
             "minimum_coverage": validation.minimum_coverage,
         }
         fixed_modules = dict(modules)
+        findings: list[dict[str, str]] = []
         for stage_name, source_code in modules.items():
             payload = {
                 "stage_name": stage_name,
                 "module_code": source_code,
+                "tests": self._read_stage_tests(stage_name),
                 "diagnostics": diagnostics,
             }
-            prompt = (
-                f"{prompt_template}\n\nReturn JSON with field 'module_code'.\n\n"
-                f"Context JSON:\n{json.dumps(payload, ensure_ascii=True)}"
-            )
-            raw_response = self._llm_client.generate(prompt=prompt)
+            prompt, truncated = self._build_prompt(prompt_template, payload)
+            try:
+                raw_response = self._generate(prompt)
+            except Exception as exc:  # noqa: BLE001
+                self._last_review_incomplete = True
+                self._last_review_error = f"{stage_name}: {exc}"
+                findings.append(
+                    {
+                        "stage": stage_name,
+                        "status": "error",
+                        "truncated": str(truncated),
+                    }
+                )
+                continue
             parsed = parse_json_object(raw_response).value
             if isinstance(parsed, dict):
                 module_code = parsed.get("module_code")
                 if isinstance(module_code, str) and "def " in module_code:
                     fixed_modules[stage_name] = module_code.strip()
+                    findings.append(
+                        {
+                            "stage": stage_name,
+                            "status": "fixed",
+                            "truncated": str(truncated).lower(),
+                        }
+                    )
                     continue
             python_code = parse_python_block(raw_response).value
             if isinstance(python_code, str):
                 fixed_modules[stage_name] = python_code
+                findings.append(
+                    {
+                        "stage": stage_name,
+                        "status": "fixed",
+                        "truncated": str(truncated).lower(),
+                    }
+                )
+            else:
+                self._last_review_incomplete = True
+                self._last_review_error = (
+                    f"{stage_name}: no valid module code in reviewer response"
+                )
+                findings.append(
+                    {
+                        "stage": stage_name,
+                        "status": "inconclusive",
+                        "truncated": str(truncated).lower(),
+                    }
+                )
+        try:
+            self._consolidate_findings(findings)
+        except Exception as exc:  # noqa: BLE001
+            self._last_review_incomplete = True
+            self._last_review_error = f"consolidation: {exc}"
         return fixed_modules
+
+    def _read_stage_tests(self, stage_name: str) -> str:
+        """Read the relevant generated test when it is available."""
+        return self._current_tests.get(stage_name, "")
+
+    def _build_prompt(
+        self, prompt_template: str, payload: dict[str, Any]
+    ) -> tuple[str, bool]:
+        """Build a bounded prompt and report whether content was truncated."""
+        prefix = (
+            f"{prompt_template}\n\nReturn JSON with field 'module_code'.\n\n"
+            "Context JSON:\n"
+        )
+        budget_chars = self._context_budget_tokens * 4
+        serialized = json.dumps(payload, ensure_ascii=True)
+        truncated = len(prefix) + len(serialized) > budget_chars
+        if truncated:
+            compacted = dict(payload)
+            available = max(0, budget_chars - len(prefix))
+            for field in ("module_code", "tests"):
+                value = compacted.get(field)
+                if isinstance(value, str):
+                    compacted[field] = value[: max(0, available // 2)]
+            serialized = json.dumps(compacted, ensure_ascii=True)
+            if len(prefix) + len(serialized) > budget_chars:
+                compacted["module_code"] = ""
+                compacted["tests"] = ""
+                serialized = json.dumps(compacted, ensure_ascii=True)
+        return f"{prefix}{serialized}", truncated
+
+    def _generate(self, prompt: str) -> str:
+        """Call the LLM with configurable spacing between requests."""
+        if self._llm_client is None:
+            return ""
+        if self._inter_call_delay_seconds:
+            time.sleep(self._inter_call_delay_seconds)
+        response = self._llm_client.generate(prompt=prompt)
+        return str(response)
+
+    def _consolidate_findings(self, findings: list[dict[str, str]]) -> None:
+        """Ask for a short consolidation without resending source code."""
+        if self._llm_client is None or not findings:
+            return
+        payload = {"partial_findings": findings}
+        prefix = (
+            "You are consolidating partial code-review findings.\n"
+            "Return JSON with fields 'issues' and 'fix_plan'.\n"
+            "Consolidate only these partial findings; do not request source code.\n"
+            "Findings JSON:\n"
+        )
+        budget_chars = self._context_budget_tokens * 2
+        serialized = json.dumps(payload, ensure_ascii=True)[:budget_chars]
+        response = self._generate(f"{prefix}{serialized}")
+        parsed = parse_json_object(response).value
+        if not isinstance(parsed, dict) or not {
+            "issues",
+            "fix_plan",
+        }.issubset(parsed):
+            self._last_review_incomplete = True
+            self._last_review_error = "consolidation: invalid reviewer response"

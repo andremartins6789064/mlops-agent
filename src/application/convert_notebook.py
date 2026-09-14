@@ -12,7 +12,7 @@ from src.domain.interfaces import ILLMClient
 from src.infrastructure.exporters.zip_exporter import ZipExporter
 from src.infrastructure.llm.base import BaseOpenAICompatibleClient
 from src.infrastructure.parsers.notebook_parser import NotebookParser
-from src.shared.config import resolve_provider, settings
+from src.shared.config import resolve_provider, reviewer_limits, settings
 from src.shared.progress import ProgressCallback
 
 
@@ -38,6 +38,7 @@ class ConversionRequest:
 def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
     """Execute full notebook-to-project conversion pipeline."""
     llm_client = _build_llm_client(request)
+    reviewer_budget, reviewer_delay = reviewer_limits(request.llm_provider)
     orchestrator = Orchestrator(
         notebook_parser=NotebookParser(),
         notebook_analyzer=NotebookAnalyzerAgent(llm_client=llm_client),
@@ -50,7 +51,11 @@ def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
             stage_feedback=request.stage_feedback or {},
         ),
         test_generator=PipelineTestGeneratorAgent(llm_client=llm_client),
-        reviewer=ReviewerAgent(llm_client=llm_client),
+        reviewer=ReviewerAgent(
+            llm_client=llm_client,
+            context_budget_tokens=reviewer_budget,
+            inter_call_delay_seconds=reviewer_delay,
+        ),
         exporter=ZipExporter(),
     )
     if request.progress_callback is None:

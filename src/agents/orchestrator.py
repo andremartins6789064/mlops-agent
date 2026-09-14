@@ -34,6 +34,8 @@ class OrchestrationResult:
     validation_result: ValidationResult | None = None
     validated_output_dir: str | None = None
     quality_metrics: QualityMetrics | None = None
+    review_incomplete: bool = False
+    review_error: str | None = None
     exported_zip_path: str | None = None
     execution_log_path: str | None = None
 
@@ -116,6 +118,8 @@ class Orchestrator:
         generated_tests: dict[str, str] | None = None
         generated_test_file_paths: dict[str, str] | None = None
         quality_metrics: QualityMetrics | None = None
+        review_incomplete = False
+        review_error: str | None = None
         validation_result: ValidationResult | None = None
         exported_zip_path: str | None = None
         stage_provenance: dict[str, StageProvenance] = {}
@@ -170,6 +174,8 @@ class Orchestrator:
                 generated_tests=generated_tests,
             )
             quality_metrics = review_result.quality_metrics
+            review_incomplete = review_result.review_incomplete
+            review_error = review_result.review_error
             validation_result = review_result.validation_result
             self._notify(
                 progress_callback,
@@ -183,6 +189,8 @@ class Orchestrator:
                     iterations=review_result.iterations,
                     has_errors=review_result.validation_result.has_errors,
                     test_coverage=review_result.quality_metrics.test_coverage,
+                    review_incomplete=review_result.review_incomplete,
+                    review_error=review_result.review_error,
                 )
 
         if (
@@ -234,6 +242,8 @@ class Orchestrator:
                 run_output_dir if validation_result is not None else None
             ),
             quality_metrics=quality_metrics,
+            review_incomplete=review_incomplete,
+            review_error=review_error,
             exported_zip_path=exported_zip_path,
             execution_log_path=(
                 str(execution_logger.log_path) if execution_logger is not None else None

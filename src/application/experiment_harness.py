@@ -37,6 +37,8 @@ CSV_FIELDS = (
     "stage_origins",
     "fallback_stages",
     "review_iterations",
+    "review_status",
+    "review_error",
     "coverage",
     "lint_errors",
     "type_errors",
@@ -271,6 +273,8 @@ def _add_result_metrics(row: dict[str, str], result: OrchestrationResult) -> Non
     if result.quality_metrics is not None:
         metrics = result.quality_metrics
         row["review_iterations"] = str(metrics.review_iterations)
+        row["review_status"] = "incompleta" if result.review_incomplete else "concluida"
+        row["review_error"] = result.review_error or ""
         row["coverage"] = f"{metrics.test_coverage:.2f}"
         row["lint_errors"] = str(metrics.lint_errors)
         row["type_errors"] = str(metrics.type_errors)

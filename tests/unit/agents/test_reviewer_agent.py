@@ -11,9 +11,11 @@ class _StubLLMClient(ILLMClient):
     def __init__(self, response: str) -> None:
         self._response = response
         self.calls = 0
+        self.prompts: list[str] = []
 
     def generate(self, prompt: str, *, system_prompt: str | None = None) -> str:
         self.calls += 1
+        self.prompts.append(prompt)
         return self._response
 
 
@@ -129,3 +131,72 @@ def test_reviewer_uses_llm_fixer_when_no_manual_fixer(tmp_path: Any) -> None:
 
     assert llm.calls >= 1
     assert result.iterations == 1
+
+
+def test_reviewer_bounds_stage_context_and_consolidates_findings(
+    tmp_path: Any,
+) -> None:
+    llm = _StubLLMClient(
+        '{"module_code":"def train_model() -> None:\\n    return None\\n"}'
+    )
+
+    def _validator(project_dir: str) -> ValidationResult:
+        return ValidationResult(
+            lint_errors=1,
+            type_errors=0,
+            test_coverage=90.0,
+            lint_output="E501",
+            type_output="",
+            test_output="",
+            lint_exit_code=1,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    reviewer = ReviewerAgent(
+        validator=_validator,
+        llm_client=llm,
+        max_iterations=1,
+        context_budget_tokens=20,
+    )
+    reviewer.review(
+        project_dir=str(tmp_path),
+        generated_modules={"training": "def train_model() -> None:\n" + "x" * 500},
+        generated_tests={"training": "def test_training() -> None:\n" + "y" * 500},
+    )
+
+    assert len(llm.prompts) == 2
+    assert len(llm.prompts[0]) < 800
+    assert "partial_findings" in llm.prompts[-1]
+    assert "module_code" not in llm.prompts[-1].split("Findings JSON:", 1)[1]
+
+
+def test_reviewer_marks_invalid_partial_response_incomplete(tmp_path: Any) -> None:
+    llm = _StubLLMClient('{"issues":["could not fix"]}')
+
+    def _validator(project_dir: str) -> ValidationResult:
+        return ValidationResult(
+            lint_errors=1,
+            type_errors=0,
+            test_coverage=90.0,
+            lint_output="E501",
+            type_output="",
+            test_output="",
+            lint_exit_code=1,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    reviewer = ReviewerAgent(
+        validator=_validator,
+        llm_client=llm,
+        max_iterations=1,
+    )
+    result = reviewer.review(
+        project_dir=str(tmp_path),
+        generated_modules={"training": "def train_model() -> None:\n    pass\n"},
+        generated_tests={"training": "def test_training() -> None:\n    assert True\n"},
+    )
+
+    assert result.review_incomplete is True
+    assert result.review_error is not None

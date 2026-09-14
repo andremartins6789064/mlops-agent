@@ -12,6 +12,8 @@ class ProviderConfig:
 
     base_url: str
     api_key_env: str
+    reviewer_context_budget_tokens: int
+    reviewer_inter_call_delay_seconds: float
 
 
 class Settings(BaseSettings):
@@ -29,10 +31,14 @@ PROVIDERS = {
     "ollama": ProviderConfig(
         base_url="http://localhost:11434/v1",
         api_key_env="LLM_API_KEY",
+        reviewer_context_budget_tokens=4_000,
+        reviewer_inter_call_delay_seconds=0.0,
     ),
     "groq": ProviderConfig(
         base_url="https://api.groq.com/openai/v1",
         api_key_env="GROQ_API_KEY",
+        reviewer_context_budget_tokens=1_500,
+        reviewer_inter_call_delay_seconds=2.0,
     ),
 }
 
@@ -63,3 +69,16 @@ def resolve_provider(provider: str) -> tuple[str, str]:
             f"Missing API key for provider '{provider}' (set {config.api_key_env})"
         )
     return base_url, api_key
+
+
+def reviewer_limits(provider: str | None) -> tuple[int, float]:
+    """Return the context budget and spacing configured for a provider."""
+    if provider is None:
+        return 4_000, 0.0
+    config = PROVIDERS.get(provider)
+    if config is None:
+        raise ValueError(f"Unknown LLM provider '{provider}'")
+    return (
+        config.reviewer_context_budget_tokens,
+        config.reviewer_inter_call_delay_seconds,
+    )
