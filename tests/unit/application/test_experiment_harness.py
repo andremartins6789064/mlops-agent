@@ -2,14 +2,46 @@ from __future__ import annotations
 
 import csv
 import time
+from pathlib import Path
 from typing import Any
+
+import nbformat
+import pytest
 
 from src.agents.orchestrator import OrchestrationResult
 from src.application.convert_notebook import ConversionRequest
-from src.application.experiment_harness import run_experiment_matrix
+from src.application.experiment_harness import (
+    DEFAULT_EXPERIMENT_NOTEBOOKS,
+    InvalidExperimentNotebookError,
+    run_experiment_matrix,
+    validate_experiment_notebooks,
+)
 from src.domain.entities import Notebook
 from src.domain.value_objects import QualityMetrics
 from src.shared.provenance import StageProvenance
+
+# mypy: disable-error-code=no-untyped-call
+
+
+def _write_notebook(path: Path, source: str) -> str:
+    notebook = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell(source)])
+    nbformat.write(notebook, path)
+    return str(path)
+
+
+def _metric_notebook(tmp_path: Path, name: str = "junior.ipynb") -> str:
+    return _write_notebook(tmp_path / name, "print('final_mse=1.0')")
+
+
+def _stub_converter(
+    requests: list[ConversionRequest],
+) -> Any:
+    def converter(request: ConversionRequest) -> OrchestrationResult:
+        Path(request.output_dir).mkdir(parents=True, exist_ok=True)
+        requests.append(request)
+        return _result()
+
+    return converter
 
 
 def _result() -> OrchestrationResult:
@@ -32,19 +64,17 @@ def _result() -> OrchestrationResult:
 
 def test_harness_writes_one_row_per_matrix_combination(tmp_path: Any) -> None:
     requests: list[ConversionRequest] = []
-
-    def converter(request: ConversionRequest) -> OrchestrationResult:
-        requests.append(request)
-        return _result()
+    notebook = _metric_notebook(tmp_path)
 
     output_csv = tmp_path / "results.csv"
     rows = run_experiment_matrix(
-        notebooks=["junior.ipynb"],
+        notebooks=[notebook],
         models=["model-a", "model-b"],
         repetitions=2,
         output_csv=str(output_csv),
         output_root=str(tmp_path / "runs"),
-        converter=converter,
+        run_mutation=False,
+        converter=_stub_converter(requests),
     )
 
     assert len(rows) == 4
@@ -61,16 +91,18 @@ def test_harness_writes_one_row_per_matrix_combination(tmp_path: Any) -> None:
 
 def test_harness_records_failed_combination_without_aborting(tmp_path: Any) -> None:
     calls = 0
+    notebook = _metric_notebook(tmp_path, "demo.ipynb")
 
     def converter(request: ConversionRequest) -> OrchestrationResult:
         nonlocal calls
         calls += 1
         if calls == 1:
             raise RuntimeError("model unavailable")
+        Path(request.output_dir).mkdir(parents=True, exist_ok=True)
         return _result()
 
     rows = run_experiment_matrix(
-        notebooks=["demo.ipynb"],
+        notebooks=[notebook],
         models=["model-a", "model-b"],
         repetitions=1,
         output_csv=str(tmp_path / "results.csv"),
@@ -86,20 +118,17 @@ def test_harness_records_failed_combination_without_aborting(tmp_path: Any) -> N
 
 def test_harness_records_provider_from_model_spec(tmp_path: Any) -> None:
     requests: list[ConversionRequest] = []
-
-    def converter(request: ConversionRequest) -> OrchestrationResult:
-        requests.append(request)
-        return _result()
+    notebook = _metric_notebook(tmp_path)
 
     output_csv = tmp_path / "results.csv"
     rows = run_experiment_matrix(
-        notebooks=["junior.ipynb"],
+        notebooks=[notebook],
         models=["groq=openai/gpt-oss-120b"],
         repetitions=1,
         output_csv=str(output_csv),
         output_root=str(tmp_path / "runs"),
         run_mutation=False,
-        converter=converter,
+        converter=_stub_converter(requests),
     )
 
     assert rows[0]["model"] == "openai/gpt-oss-120b"
@@ -110,13 +139,15 @@ def test_harness_records_provider_from_model_spec(tmp_path: Any) -> None:
 def test_harness_records_timeout_and_keeps_incremental_csv(
     tmp_path: Any,
 ) -> None:
+    notebook = _metric_notebook(tmp_path, "demo.ipynb")
+
     def converter(request: ConversionRequest) -> OrchestrationResult:
         time.sleep(2)
         return _result()
 
     output_csv = tmp_path / "results.csv"
     rows = run_experiment_matrix(
-        notebooks=["demo.ipynb"],
+        notebooks=[notebook],
         models=["slow-model"],
         repetitions=1,
         output_csv=str(output_csv),
@@ -130,3 +161,98 @@ def test_harness_records_timeout_and_keeps_incremental_csv(
     with output_csv.open(newline="", encoding="utf-8") as file_obj:
         saved_rows = list(csv.DictReader(file_obj))
     assert saved_rows[0]["error"] == "timeout after 1s"
+
+
+def test_harness_rejects_fixture_notebook_before_conversion(tmp_path: Any) -> None:
+    requests: list[ConversionRequest] = []
+    output_csv = tmp_path / "results.csv"
+
+    def converter(request: ConversionRequest) -> OrchestrationResult:
+        requests.append(request)
+        return _result()
+
+    with pytest.raises(InvalidExperimentNotebookError, match="tests/fixtures"):
+        run_experiment_matrix(
+            notebooks=["tests/fixtures/simple_regression.ipynb"],
+            models=["model-a"],
+            repetitions=1,
+            output_csv=str(output_csv),
+            output_root=str(tmp_path / "runs"),
+            run_mutation=False,
+            converter=converter,
+        )
+
+    assert requests == []
+    assert not output_csv.exists()
+
+
+def test_harness_rejects_notebook_without_metric_before_llm(tmp_path: Any) -> None:
+    requests: list[ConversionRequest] = []
+    notebook = _write_notebook(tmp_path / "score_only.ipynb", "print('score=1.0')")
+    output_csv = tmp_path / "results.csv"
+
+    def converter(request: ConversionRequest) -> OrchestrationResult:
+        requests.append(request)
+        return _result()
+
+    with pytest.raises(InvalidExperimentNotebookError, match="final_mse"):
+        run_experiment_matrix(
+            notebooks=[notebook],
+            models=["model-a"],
+            repetitions=1,
+            output_csv=str(output_csv),
+            output_root=str(tmp_path / "runs"),
+            run_mutation=False,
+            converter=converter,
+        )
+
+    assert requests == []
+    assert not output_csv.exists()
+
+
+def test_harness_rejects_notebook_that_does_not_print_metric(
+    tmp_path: Any,
+) -> None:
+    requests: list[ConversionRequest] = []
+    notebook = _write_notebook(tmp_path / "silent.ipynb", "final_mse = 1.0")
+
+    def converter(request: ConversionRequest) -> OrchestrationResult:
+        requests.append(request)
+        return _result()
+
+    with pytest.raises(InvalidExperimentNotebookError, match="executed"):
+        run_experiment_matrix(
+            notebooks=[notebook],
+            models=["model-a"],
+            repetitions=1,
+            output_csv=str(tmp_path / "results.csv"),
+            output_root=str(tmp_path / "runs"),
+            run_mutation=False,
+            converter=converter,
+        )
+
+    assert requests == []
+
+
+def test_harness_rejects_missing_notebook(tmp_path: Any) -> None:
+    output_csv = tmp_path / "results.csv"
+    with pytest.raises(InvalidExperimentNotebookError, match="does not exist"):
+        run_experiment_matrix(
+            notebooks=[str(tmp_path / "missing.ipynb")],
+            models=["model-a"],
+            repetitions=1,
+            output_csv=str(output_csv),
+            output_root=str(tmp_path / "runs"),
+            run_mutation=False,
+            converter=_stub_converter([]),
+        )
+    assert not output_csv.exists()
+
+
+def test_harness_precheck_skips_duplicate_notebook_paths(tmp_path: Any) -> None:
+    notebook = _metric_notebook(tmp_path)
+    validate_experiment_notebooks([notebook, notebook])
+
+
+def test_etapa_9_0_notebooks_pass_precheck() -> None:
+    validate_experiment_notebooks(DEFAULT_EXPERIMENT_NOTEBOOKS)

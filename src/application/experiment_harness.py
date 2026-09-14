@@ -13,15 +13,29 @@ from pathlib import Path
 
 from src.agents.orchestrator import OrchestrationResult
 from src.application.convert_notebook import ConversionRequest, convert_notebook
-from src.application.equivalence_runner import run_equivalence
+from src.application.equivalence_runner import (
+    notebook_source_declares_metric,
+    read_notebook_metric,
+    run_equivalence,
+)
 from src.application.mutation_checker import run_mutation_check
 from src.shared.progress import ProgressEvent
 
 Converter = Callable[[ConversionRequest], OrchestrationResult]
 
+DEFAULT_EXPERIMENT_NOTEBOOKS = (
+    "notebooks/junior_regression.ipynb",
+    "notebooks/senior_regression.ipynb",
+)
+PRIMARY_METRIC_NAME = "final_mse"
+
 
 class ExperimentTimeout(BaseException):
     """Signal that one matrix combination exceeded its time budget."""
+
+
+class InvalidExperimentNotebookError(ValueError):
+    """A matrix notebook cannot produce the primary experimental metric."""
 
 
 CSV_FIELDS = (
@@ -76,6 +90,12 @@ def run_experiment_matrix(
     if max_run_seconds <= 0:
         raise ValueError("max_run_seconds must be positive")
 
+    validate_experiment_notebooks(
+        notebooks,
+        metric_name=PRIMARY_METRIC_NAME,
+        timeout_seconds=timeout_seconds,
+    )
+
     rows: list[dict[str, str]] = []
     root = Path(output_root)
     root.mkdir(parents=True, exist_ok=True)
@@ -116,6 +136,70 @@ def run_experiment_matrix(
                         flush=True,
                     )
     return rows
+
+
+def validate_experiment_notebooks(
+    notebooks: Sequence[str],
+    *,
+    metric_name: str = PRIMARY_METRIC_NAME,
+    timeout_seconds: int = 120,
+) -> None:
+    """Reject parser fixtures and notebooks that cannot emit the primary metric."""
+    seen: set[Path] = set()
+    for notebook in notebooks:
+        path = Path(notebook)
+        if _is_parser_fixture(path):
+            raise InvalidExperimentNotebookError(
+                f"Notebook '{notebook}' is under tests/fixtures/ and cannot be "
+                "used as experiment-matrix input. Use "
+                "notebooks/junior_regression.ipynb and "
+                "notebooks/senior_regression.ipynb. Parser fixtures remain valid "
+                "for unit tests, PASSO 0, and T-8."
+            )
+        resolved = path.expanduser().resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        _require_printed_metric(
+            path,
+            metric_name=metric_name,
+            timeout_seconds=timeout_seconds,
+        )
+
+
+def _is_parser_fixture(path: Path) -> bool:
+    parts = path.expanduser().resolve(strict=False).parts
+    for index, part in enumerate(parts[:-1]):
+        if part == "tests" and parts[index + 1] == "fixtures":
+            return True
+    return False
+
+
+def _require_printed_metric(
+    path: Path,
+    *,
+    metric_name: str,
+    timeout_seconds: int,
+) -> None:
+    if not path.is_file():
+        raise InvalidExperimentNotebookError(f"Notebook '{path}' does not exist.")
+    notebook_path = str(path)
+    if not notebook_source_declares_metric(notebook_path, metric_name=metric_name):
+        raise InvalidExperimentNotebookError(
+            f"Notebook '{notebook_path}' does not print '{metric_name}'. "
+            "Refuse this input before calling the LLM. Experiment notebooks "
+            "must print the primary metric used by functional equivalence."
+        )
+    metric, error = read_notebook_metric(
+        notebook_path,
+        metric_name=metric_name,
+        timeout_seconds=timeout_seconds,
+    )
+    if error is not None or metric is None:
+        raise InvalidExperimentNotebookError(
+            f"Notebook '{notebook_path}' did not produce '{metric_name}' when "
+            f"executed: {error or 'metric missing from output'}"
+        )
 
 
 def _run_one_with_timeout(

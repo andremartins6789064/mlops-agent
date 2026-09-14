@@ -9,6 +9,8 @@ import nbformat
 from src.application.equivalence_runner import (
     EquivalenceStatus,
     extract_metric,
+    notebook_source_declares_metric,
+    read_notebook_metric,
     run_equivalence,
 )
 
@@ -76,3 +78,25 @@ def test_extract_metric_uses_last_value_and_supports_scientific_notation() -> No
     output = "final_mse=1.0\nintermediate=2\nfinal_mse=1.2e-3\n"
 
     assert extract_metric(output, metric_name="final_mse") == 0.0012
+
+
+def test_notebook_source_declares_metric_detects_print_and_assignment(
+    tmp_path: Any,
+) -> None:
+    declared = tmp_path / "declared.ipynb"
+    missing = tmp_path / "missing.ipynb"
+    _write_notebook(declared, "print(f'final_mse={value:.12f}')")
+    _write_notebook(missing, "print('score=1.0')")
+
+    assert notebook_source_declares_metric(str(declared), metric_name="final_mse")
+    assert not notebook_source_declares_metric(str(missing), metric_name="final_mse")
+
+
+def test_read_notebook_metric_returns_printed_value(tmp_path: Any) -> None:
+    notebook_path = tmp_path / "source.ipynb"
+    _write_notebook(notebook_path, "print('final_mse=0.011202345146')")
+
+    metric, error = read_notebook_metric(str(notebook_path), metric_name="final_mse")
+
+    assert error is None
+    assert metric == 0.011202345146

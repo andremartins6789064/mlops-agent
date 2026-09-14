@@ -126,6 +126,39 @@ def extract_metric(output: str, *, metric_name: str) -> float | None:
     return float(matches[-1]) if matches else None
 
 
+def notebook_source_declares_metric(
+    notebook_path: str, *, metric_name: str = "final_mse"
+) -> bool:
+    """Return True when code cells assign or print the named metric."""
+    notebook = nbformat.read(notebook_path, as_version=4)
+    source = "\n".join(
+        str(cell.get("source", ""))
+        for cell in notebook.cells
+        if cell.cell_type == "code"
+    )
+    return re.search(rf"{re.escape(metric_name)}\s*=", source) is not None
+
+
+def read_notebook_metric(
+    notebook_path: str,
+    *,
+    metric_name: str = "final_mse",
+    timeout_seconds: int = 120,
+) -> tuple[float | None, str | None]:
+    """Execute a notebook and extract the printed metric, without a pipeline."""
+    output, error, _duration = _run_notebook(
+        notebook_path=notebook_path,
+        metric_name=metric_name,
+        timeout_seconds=timeout_seconds,
+    )
+    if error is not None:
+        return None, error
+    metric = extract_metric(output, metric_name=metric_name)
+    if metric is None:
+        return None, f"Metric '{metric_name}' was not printed."
+    return metric, None
+
+
 def _run_notebook(
     *, notebook_path: str, metric_name: str, timeout_seconds: int
 ) -> tuple[str, str | None, float]:

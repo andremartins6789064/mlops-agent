@@ -101,13 +101,18 @@ separadores:
 
 ```bash
 uv run python scripts/run_experiment_matrix.py \
-  --notebooks notebooks/junior_regression.ipynb \
-  --models ollama=gemma4:e2b groq=openai/gpt-oss-120b \
+  --notebooks notebooks/junior_regression.ipynb notebooks/senior_regression.ipynb \
+  --models ollama=gemma4:e2b groq=openai/gpt-oss-20b \
   --repetitions 1 \
   --llm-timeout 300 \
   --llm-retries 3 \
   --llm-retry-backoff 5
 ```
+
+Omitir `--notebooks` usa os dois notebooks da Etapa 9.0. O harness recusa
+arquivos sob `tests/fixtures/` e notebooks que não imprimem `final_mse`,
+antes de qualquer chamada de LLM. A fixture `simple_regression.ipynb` continua
+válida para testes do parser, PASSO 0 e T-8; não é insumo da matriz.
 
 O provedor Groq usa `GROQ_API_KEY` do ambiente. A chave nunca é gravada no
 CSV, nos logs ou no nome da pasta de execução. Erros persistentes, como
