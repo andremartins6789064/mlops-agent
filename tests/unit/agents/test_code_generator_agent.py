@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.agents.code_generator import CodeGeneratorAgent
 from src.domain.interfaces import ILLMClient
+from src.domain.pipeline_contract import check_pipeline_contract
 from src.infrastructure.parsers.notebook_parser import NotebookParser
 
 
@@ -50,6 +51,7 @@ def test_code_generator_creates_four_modules_with_template() -> None:
     assert "def load_data" in generated["feature_engineering"]
     assert "def train_model" in generated["training"]
     assert "def predict" in generated["inference"]
+    assert check_pipeline_contract(generated) == []
 
 
 def test_code_generator_uses_llm_module_code_when_valid_json() -> None:
@@ -290,3 +292,6 @@ def test_code_generator_prompt_requires_faithful_notebook_refactoring() -> None:
     assert "Convert global state into explicit function arguments" in prompt
     assert "python` fenced block" in prompt
     assert "Legacy JSON" in prompt
+    assert "required_signatures" in prompt
+    assert "train_model(train_features, train_labels)" in prompt
+    assert "must not require a path" in prompt

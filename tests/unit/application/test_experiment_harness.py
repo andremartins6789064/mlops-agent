@@ -307,3 +307,44 @@ def test_harness_precheck_skips_duplicate_notebook_paths(tmp_path: Any) -> None:
 
 def test_etapa_9_0_notebooks_pass_precheck() -> None:
     validate_experiment_notebooks(DEFAULT_EXPERIMENT_NOTEBOOKS)
+
+
+def test_harness_records_nonconforming_contract_without_crashing(
+    tmp_path: Any,
+) -> None:
+    notebook = _metric_notebook(tmp_path)
+
+    def converter(request: ConversionRequest) -> OrchestrationResult:
+        Path(request.output_dir).mkdir(parents=True, exist_ok=True)
+        result = _result()
+        result.generated_modules = {
+            "feature_engineering": (
+                "def load_data(file_path: str) -> object:\n    return file_path\n"
+            ),
+            "training": (
+                "def train_model(x: object, y: object) -> object:\n    return x\n"
+            ),
+            "inference": (
+                "def predict(model: object, x: object) -> object:\n    return x\n"
+            ),
+            "evaluation": (
+                "def evaluate_model(a: object, b: object, c: object) -> float:\n"
+                "    return 0.0\n"
+            ),
+        }
+        return result
+
+    rows = run_experiment_matrix(
+        notebooks=[notebook],
+        models=["model-a"],
+        repetitions=1,
+        output_csv=str(tmp_path / "results.csv"),
+        output_root=str(tmp_path / "runs"),
+        run_mutation=False,
+        converter=converter,
+    )
+
+    assert rows[0]["contract_status"] == "nao_conforme"
+    assert "feature_engineering.load_data" in rows[0]["contract_error"]
+    assert "evaluation.evaluate_model" in rows[0]["contract_error"]
+    assert rows[0]["error"] == ""

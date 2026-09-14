@@ -16,6 +16,8 @@ class StageProvenance:
     duration_seconds: float = 0.0
     context_truncated: bool = False
     parse_method: str | None = None
+    contract_ok: bool = True
+    contract_error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""

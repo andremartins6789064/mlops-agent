@@ -124,10 +124,10 @@ class PipelineTestGeneratorAgent:
             "    csv_path = tmp_path / 'data.csv'\n"
             "    csv_path.write_text('x,y\\n1,2\\n', encoding='utf-8')\n"
             "    if hasattr(stage_module, 'load_data'):\n"
-            "        loaded = stage_module.load_data(str(csv_path))\n"
+            "        loaded = stage_module.load_data()\n"
             "        assert loaded is not None\n"
             "    if hasattr(stage_module, 'split_data'):\n"
-            "        split = stage_module.split_data([1, 2, 3])\n"
+            "        split = stage_module.split_data([1, 2, 3], [1, 2, 3])\n"
             "        assert len(split) == 4\n"
         )
 

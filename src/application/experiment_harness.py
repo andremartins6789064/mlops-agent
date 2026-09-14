@@ -19,6 +19,11 @@ from src.application.equivalence_runner import (
     run_equivalence,
 )
 from src.application.mutation_checker import run_mutation_check
+from src.domain.pipeline_contract import (
+    PRIMARY_METRIC_NAME,
+    check_pipeline_contract,
+    format_contract_issues,
+)
 from src.shared.progress import ProgressEvent
 
 Converter = Callable[[ConversionRequest], OrchestrationResult]
@@ -27,7 +32,6 @@ DEFAULT_EXPERIMENT_NOTEBOOKS = (
     "notebooks/junior_regression.ipynb",
     "notebooks/senior_regression.ipynb",
 )
-PRIMARY_METRIC_NAME = "final_mse"
 
 
 class ExperimentTimeout(BaseException):
@@ -50,6 +54,8 @@ CSV_FIELDS = (
     "equivalence_error",
     "stage_origins",
     "fallback_stages",
+    "contract_status",
+    "contract_error",
     "review_iterations",
     "review_status",
     "review_error",
@@ -380,6 +386,13 @@ def _add_result_metrics(row: dict[str, str], result: OrchestrationResult) -> Non
     row["fallback_stages"] = ";".join(
         stage for stage, item in sorted(provenance.items()) if item.origin == "template"
     )
+    if result.generated_modules:
+        issues = check_pipeline_contract(result.generated_modules)
+        row["contract_status"] = "conforme" if not issues else "nao_conforme"
+        row["contract_error"] = format_contract_issues(issues)
+    else:
+        row["contract_status"] = ""
+        row["contract_error"] = ""
     if result.quality_metrics is not None:
         metrics = result.quality_metrics
         row["review_iterations"] = str(metrics.review_iterations)

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from src.domain.interfaces import ILLMClient
+from src.domain.pipeline_contract import PRIMARY_METRIC_NAME
 from src.shared.llm_parsing import parse_json_object
 
 
@@ -14,7 +15,7 @@ class ArchitectureAgent:
     _DEFAULT_ENTRYPOINT = {
         "path": "src/main.py",
         "command": "python src/main.py",
-        "metric_name": "final_mse",
+        "metric_name": PRIMARY_METRIC_NAME,
         "stages": [
             "feature_engineering",
             "training",

@@ -12,6 +12,7 @@ from src.agents.test_generator import PipelineTestGeneratorAgent
 from src.application.validate_output import ValidationResult
 from src.domain.entities import Notebook, Pipeline, PipelineStage, PipelineType
 from src.domain.interfaces import IExporter, INotebookParser
+from src.domain.pipeline_contract import check_pipeline_contract, format_contract_issues
 from src.domain.value_objects import QualityMetrics
 from src.shared.logger import StructuredExecutionLogger
 from src.shared.progress import ProgressCallback, ProgressEvent
@@ -142,6 +143,7 @@ class Orchestrator:
                     output_dir=run_output_dir,
                 )
             stage_provenance = self._code_generator.stage_provenance
+            self._annotate_contract(generated_modules, stage_provenance)
             if execution_logger is not None:
                 for stage_name, provenance in stage_provenance.items():
                     execution_logger.log(
@@ -149,6 +151,12 @@ class Orchestrator:
                         stage=stage_name,
                         **provenance.to_dict(),
                     )
+                issues = check_pipeline_contract(generated_modules)
+                execution_logger.log(
+                    "contract_checked",
+                    contract_ok=not issues,
+                    contract_error=format_contract_issues(issues),
+                )
 
         if self._test_generator is not None and generated_modules is not None:
             generated_tests = self._test_generator.generate_tests(
@@ -255,6 +263,25 @@ class Orchestrator:
                 str(execution_logger.log_path) if execution_logger is not None else None
             ),
         )
+
+    @staticmethod
+    def _annotate_contract(
+        generated_modules: dict[str, str],
+        provenance: dict[str, StageProvenance],
+    ) -> None:
+        """Record signature mismatches on provenance without failing the run."""
+        issues = check_pipeline_contract(generated_modules)
+        messages: dict[str, list[str]] = {}
+        for issue in issues:
+            messages.setdefault(issue.module, []).append(
+                f"{issue.function}: {issue.message}"
+            )
+        for module_name, details in messages.items():
+            item = provenance.get(module_name)
+            if item is None:
+                continue
+            item.contract_ok = False
+            item.contract_error = "; ".join(details)
 
     @staticmethod
     def _notify(

@@ -83,7 +83,7 @@ def test_file_system_writer_creates_executable_entrypoint(tmp_path: Path) -> Non
         project_root=str(root),
         generated_modules={
             "feature_engineering": (
-                "def load_data(path: str) -> tuple[list[int], list[int]]:\n"
+                "def load_data() -> tuple[list[int], list[int]]:\n"
                 "    return [1, 2], [2, 4]\n\n"
                 "def split_data(X: list[int], y: list[int]) -> "
                 "tuple[list[int], list[int], list[int], list[int]]:\n"

@@ -7,6 +7,7 @@ from typing import Any
 
 from src.domain.entities import Notebook
 from src.domain.interfaces import ILLMClient
+from src.domain.pipeline_contract import prompt_signatures
 from src.shared.config import settings
 from src.shared.llm_parsing import parse_json_object, parse_python_block
 from src.shared.progress import ProgressCallback, ProgressEvent
@@ -205,6 +206,10 @@ class CodeGeneratorAgent:
         architecture_plan: dict[str, Any],
     ) -> str:
         prompt_template = Path(self._prompt_path).read_text(encoding="utf-8")
+        prompt_template = prompt_template.replace(
+            "__REQUIRED_SIGNATURES__",
+            prompt_signatures(module_name=module_name),
+        )
         stage_cells = self._build_stage_cell_context(
             module_name=module_name,
             notebook=notebook,
@@ -218,6 +223,7 @@ class CodeGeneratorAgent:
             "shared_variables": notebook_analysis.get("shared_variables", []),
             "module_plan": architecture_plan.get("modules", {}).get(module_name, {}),
             "stage_feedback": self._stage_feedback.get(module_name),
+            "required_signatures": prompt_signatures(module_name=module_name),
         }
         return f"{prompt_template}\n\nGeneration context JSON:\n{json.dumps(payload)}"
 
@@ -290,12 +296,6 @@ class CodeGeneratorAgent:
 
     def _build_imports(self, *, module_name: str, libraries: Any) -> str:
         import_lines = ["from __future__ import annotations", "from typing import Any"]
-        if (
-            isinstance(libraries, list)
-            and "pandas" in libraries
-            and module_name == "feature_engineering"
-        ):
-            import_lines.append("import pandas as pd")
         if module_name in {"training", "inference"}:
             import_lines.extend(["import pickle", "from pathlib import Path"])
         return "\n".join(import_lines)
@@ -303,18 +303,31 @@ class CodeGeneratorAgent:
     def _build_function_stub(self, *, module_name: str, function_name: str) -> str:
         if function_name == "load_data":
             return (
-                "def load_data(path: str) -> Any:\n"
-                '    """Load input data from path."""\n'
-                "    try:\n"
-                "        return pd.read_csv(path)  # type: ignore[name-defined]\n"
-                "    except Exception:\n"
-                "        return path\n"
+                "def load_data(path: str | None = None) -> tuple[Any, Any]:\n"
+                '    """Return (features, labels) without requiring a file."""\n'
+                "    if path is None:\n"
+                "        return [], []\n"
+                "    return [path], []\n"
             )
         if function_name == "split_data":
             return (
-                "def split_data(data: Any) -> tuple[Any, Any, Any, Any]:\n"
+                "def split_data(\n"
+                "    features: Any, labels: Any\n"
+                ") -> tuple[Any, Any, Any, Any]:\n"
                 '    """Split dataset into train/test placeholders."""\n'
-                "    return data, data, data, data\n"
+                "    return features, features, labels, labels\n"
+            )
+        if function_name == "clean_data":
+            return (
+                "def clean_data(features: Any, labels: Any) -> tuple[Any, Any]:\n"
+                '    """Passthrough cleaner placeholder."""\n'
+                "    return features, labels\n"
+            )
+        if function_name == "prepare_features":
+            return (
+                "def prepare_features(features: Any, labels: Any) -> tuple[Any, Any]:\n"
+                '    """Passthrough feature placeholder."""\n'
+                "    return features, labels\n"
             )
         if function_name == "train_model":
             return (
@@ -350,14 +363,10 @@ class CodeGeneratorAgent:
             )
         if function_name in {"evaluate_model", "build_metrics_report"}:
             return (
-                f"def {function_name}(y_true: Any, y_pred: Any) -> dict[str, float]:\n"
-                '    """Compute simple evaluation metrics placeholder."""\n'
-                '    size_true = len(y_true) if hasattr(y_true, "__len__") else 0\n'
-                '    size_pred = len(y_pred) if hasattr(y_pred, "__len__") else 0\n'
-                "    if size_true == 0:\n"
-                '        return {"coverage": 0.0}\n'
-                "    ratio = min(size_true, size_pred) / float(size_true)\n"
-                '    return {"coverage": ratio}\n'
+                f"def {function_name}(test_labels: Any, predictions: Any) -> "
+                "dict[str, float]:\n"
+                '    """Return a metrics mapping that includes final_mse."""\n'
+                '    return {"final_mse": 0.0}\n'
             )
         return (
             f"def {function_name}(*args: Any, **kwargs: Any) -> Any:\n"
