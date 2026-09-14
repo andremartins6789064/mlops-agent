@@ -49,7 +49,9 @@ class ZipExporter(IExporter):
             libraries=libs_list,
         )
         self._writer.write_pyproject(
-            project_root=str(project_root), project_name=project_name
+            project_root=str(project_root),
+            project_name=project_name,
+            libraries=libs_list,
         )
 
         zip_path = base_dir / f"{project_name}.zip"

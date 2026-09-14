@@ -5,6 +5,12 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.shared.generated_project import (
+    detect_project_libraries,
+    parse_project_name,
+    write_project_metadata,
+)
+
 
 @dataclass(slots=True)
 class ValidationResult:
@@ -44,12 +50,8 @@ def validate_output(
     """Run lint, type-check, and tests for generated project files."""
     root = Path(project_dir)
     root.mkdir(parents=True, exist_ok=True)
-    _ensure_pyproject(root)
-    requirements_args = (
-        ["--with-requirements", "requirements.txt"]
-        if (root / "requirements.txt").exists()
-        else []
-    )
+    _ensure_project_metadata(root)
+    requirements_args = ["--with-requirements", "requirements.txt"]
 
     lint = _run_command(
         [
@@ -128,19 +130,18 @@ class _CommandResult:
     timed_out: bool = False
 
 
-def _ensure_pyproject(root: Path) -> None:
-    """Create minimal project metadata before running validation."""
+def _ensure_project_metadata(root: Path) -> None:
+    """Write matching packaging files before running isolated validation."""
     pyproject_path = root / "pyproject.toml"
+    project_name = "generated-project"
     if pyproject_path.exists():
-        return
-    pyproject_path.write_text(
-        "[project]\n"
-        'name = "generated-project"\n'
-        'version = "0.1.0"\n'
-        'requires-python = ">=3.11"\n\n'
-        "[tool.pytest.ini_options]\n"
-        'testpaths = ["tests"]\n',
-        encoding="utf-8",
+        existing_name = parse_project_name(pyproject_path.read_text(encoding="utf-8"))
+        if existing_name is not None:
+            project_name = existing_name
+    write_project_metadata(
+        root,
+        project_name=project_name,
+        libraries=detect_project_libraries(root),
     )
 
 

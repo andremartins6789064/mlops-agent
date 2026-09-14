@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -65,7 +66,11 @@ def test_file_system_writer_creates_expected_artifacts(tmp_path: Path) -> None:
     writer.write_readme(
         project_root=str(root), project_name="demo", libraries=["numpy"]
     )
-    writer.write_pyproject(project_root=str(root), project_name="demo")
+    writer.write_pyproject(
+        project_root=str(root),
+        project_name="demo",
+        libraries=["numpy", "pandas", "numpy", "sklearn"],
+    )
 
     assert (root / "src" / "inference.py").exists()
     assert (root / "tests" / "test_inference.py").exists()
@@ -73,7 +78,8 @@ def test_file_system_writer_creates_expected_artifacts(tmp_path: Path) -> None:
         encoding="utf-8"
     ) == "numpy\npandas\nscikit-learn\n"
     assert (root / "README.md").exists()
-    assert (root / "pyproject.toml").exists()
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert pyproject["project"]["dependencies"] == ["numpy", "pandas", "scikit-learn"]
 
 
 def test_file_system_writer_creates_executable_entrypoint(tmp_path: Path) -> None:
@@ -158,3 +164,8 @@ def test_zip_exporter_creates_valid_archive_with_expected_layout(
     assert "requirements.txt" in names
     assert "pyproject.toml" in names
     assert "README.md" in names
+    with ZipFile(archive, "r") as zip_file:
+        requirements = zip_file.read("requirements.txt").decode("utf-8")
+        pyproject = tomllib.loads(zip_file.read("pyproject.toml").decode("utf-8"))
+    assert requirements.splitlines() == ["pandas", "scikit-learn"]
+    assert pyproject["project"]["dependencies"] == ["pandas", "scikit-learn"]
