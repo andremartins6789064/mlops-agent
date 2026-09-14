@@ -30,6 +30,7 @@ class ConversionRequest:
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
+    enable_review: bool = False
     architecture_feedback: str | None = None
     stage_feedback: dict[str, str] | None = None
     progress_callback: ProgressCallback | None = None
@@ -38,7 +39,14 @@ class ConversionRequest:
 def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
     """Execute full notebook-to-project conversion pipeline."""
     llm_client = _build_llm_client(request)
-    reviewer_budget, reviewer_delay = reviewer_limits(request.llm_provider)
+    reviewer = None
+    if request.enable_review:
+        reviewer_budget, reviewer_delay = reviewer_limits(request.llm_provider)
+        reviewer = ReviewerAgent(
+            llm_client=llm_client,
+            context_budget_tokens=reviewer_budget,
+            inter_call_delay_seconds=reviewer_delay,
+        )
     orchestrator = Orchestrator(
         notebook_parser=NotebookParser(),
         notebook_analyzer=NotebookAnalyzerAgent(llm_client=llm_client),
@@ -51,11 +59,7 @@ def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
             stage_feedback=request.stage_feedback or {},
         ),
         test_generator=PipelineTestGeneratorAgent(llm_client=llm_client),
-        reviewer=ReviewerAgent(
-            llm_client=llm_client,
-            context_budget_tokens=reviewer_budget,
-            inter_call_delay_seconds=reviewer_delay,
-        ),
+        reviewer=reviewer,
         exporter=ZipExporter(),
     )
     if request.progress_callback is None:

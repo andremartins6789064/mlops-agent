@@ -19,7 +19,13 @@ if result is None:
     render_missing_result_message()
 else:
     render_metrics_card(result.quality_metrics)
-    st.write(summarize_review_status(result.quality_metrics))
+    st.write(
+        summarize_review_status(
+            result.quality_metrics,
+            review_enabled=result.review_enabled,
+            review_incomplete=result.review_incomplete,
+        )
+    )
     render_validation_details(
         validation=result.validation_result,
         validated_output_dir=result.validated_output_dir,

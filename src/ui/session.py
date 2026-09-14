@@ -21,6 +21,7 @@ class UIConfig:
     llm_base_url: str = "http://localhost:11434/v1"
     llm_api_key: str = "ollama"
     llm_model: str = "smollm2:1.7b"
+    enable_review: bool = False
     output_dir: str = "output/ui_runs"
 
 

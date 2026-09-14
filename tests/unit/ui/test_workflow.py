@@ -46,6 +46,7 @@ def test_get_stage_code_and_tests_return_expected_values() -> None:
 
 def test_summarize_review_status_handles_missing_metrics() -> None:
     assert summarize_review_status(None) == "Métricas de revisão ainda não disponíveis."
+    assert "desativado" in summarize_review_status(None, review_enabled=False)
 
 
 def test_summarize_review_status_formats_values() -> None:
@@ -87,5 +88,6 @@ def test_run_conversion_forwards_feedback(
     )
     request = captured["request"]
     assert conversion_result is result
+    assert getattr(request, "enable_review") is False
     assert getattr(request, "architecture_feedback") == "Use cleaner modules"
     assert getattr(request, "stage_feedback") == {"training": "Add train/valid split"}

@@ -64,6 +64,7 @@ def run_experiment_matrix(
     llm_timeout_seconds: float = 300.0,
     llm_max_retries: int = 3,
     llm_retry_backoff_seconds: float = 5.0,
+    enable_review: bool = False,
     run_mutation: bool = True,
     converter: Converter = convert_notebook,
 ) -> list[dict[str, str]]:
@@ -98,6 +99,7 @@ def run_experiment_matrix(
                         llm_timeout_seconds=llm_timeout_seconds,
                         llm_max_retries=llm_max_retries,
                         llm_retry_backoff_seconds=llm_retry_backoff_seconds,
+                        enable_review=enable_review,
                         run_mutation=run_mutation,
                         converter=converter,
                     )
@@ -126,6 +128,7 @@ def _run_one_with_timeout(
     llm_timeout_seconds: float,
     llm_max_retries: int,
     llm_retry_backoff_seconds: float,
+    enable_review: bool,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
@@ -154,6 +157,7 @@ def _run_one_with_timeout(
             llm_timeout_seconds=llm_timeout_seconds,
             llm_max_retries=llm_max_retries,
             llm_retry_backoff_seconds=llm_retry_backoff_seconds,
+            enable_review=enable_review,
             run_mutation=run_mutation,
             converter=converter,
         )
@@ -179,6 +183,7 @@ def _run_one(
     llm_timeout_seconds: float,
     llm_max_retries: int,
     llm_retry_backoff_seconds: float,
+    enable_review: bool,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
@@ -206,6 +211,7 @@ def _run_one(
                 use_llm=True,
                 llm_model=model,
                 llm_provider=provider,
+                enable_review=enable_review,
                 llm_timeout_seconds=llm_timeout_seconds,
                 llm_max_retries=llm_max_retries,
                 llm_retry_backoff_seconds=llm_retry_backoff_seconds,
@@ -263,6 +269,13 @@ def _parse_model_spec(model_spec: str) -> tuple[str | None, str]:
 
 
 def _add_result_metrics(row: dict[str, str], result: OrchestrationResult) -> None:
+    if not result.review_enabled:
+        row["review_status"] = "desativada"
+    elif result.review_incomplete or result.quality_metrics is None:
+        row["review_status"] = "inconclusiva"
+    else:
+        row["review_status"] = "concluida"
+    row["review_error"] = result.review_error or ""
     provenance = result.stage_provenance or {}
     row["stage_origins"] = ";".join(
         f"{stage}:{item.origin}" for stage, item in sorted(provenance.items())
@@ -273,8 +286,6 @@ def _add_result_metrics(row: dict[str, str], result: OrchestrationResult) -> Non
     if result.quality_metrics is not None:
         metrics = result.quality_metrics
         row["review_iterations"] = str(metrics.review_iterations)
-        row["review_status"] = "incompleta" if result.review_incomplete else "concluida"
-        row["review_error"] = result.review_error or ""
         row["coverage"] = f"{metrics.test_coverage:.2f}"
         row["lint_errors"] = str(metrics.lint_errors)
         row["type_errors"] = str(metrics.type_errors)

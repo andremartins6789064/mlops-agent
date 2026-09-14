@@ -21,6 +21,10 @@ with st.form("conversion_form"):
         "Chave de API do LLM", value=config.llm_api_key, type="password"
     )
     llm_model = st.text_input("Modelo LLM", value=config.llm_model)
+    enable_review = st.checkbox(
+        "Ativar Reviewer (pode aumentar significativamente o tempo)",
+        value=config.enable_review,
+    )
     output_dir = st.text_input("Diretório de saída", value=config.output_dir)
     uploaded_file = st.file_uploader("Enviar notebook (.ipynb)", type=["ipynb"])
     submit = st.form_submit_button("Executar conversão")
@@ -35,6 +39,7 @@ if submit:
             llm_base_url=llm_base_url,
             llm_api_key=llm_api_key,
             llm_model=llm_model,
+            enable_review=enable_review,
             output_dir=output_dir,
         )
         st.session_state[CONFIG_KEY] = active_config

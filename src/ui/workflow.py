@@ -40,6 +40,7 @@ def run_conversion(
         llm_base_url=config.llm_base_url,
         llm_api_key=config.llm_api_key,
         llm_model=config.llm_model,
+        enable_review=config.enable_review,
         architecture_feedback=architecture_feedback,
         stage_feedback=stage_feedback,
         progress_callback=progress_callback,
@@ -80,8 +81,17 @@ def result_ready(state: dict[str, Any]) -> bool:
     return bool(state.get("mlops_result"))
 
 
-def summarize_review_status(metrics: QualityMetrics | None) -> str:
+def summarize_review_status(
+    metrics: QualityMetrics | None,
+    *,
+    review_enabled: bool = True,
+    review_incomplete: bool = False,
+) -> str:
     """Build a one-line review status string for the UI."""
+    if not review_enabled:
+        return "Reviewer desativado; métricas de revisão não foram coletadas."
+    if review_incomplete:
+        return "Revisão inconclusiva; verifique os erros registrados."
     if metrics is None:
         return "Métricas de revisão ainda não disponíveis."
     status = "aprovada" if metrics.meets_minimum_coverage() else "precisa de ajustes"

@@ -54,6 +54,7 @@ def test_harness_writes_one_row_per_matrix_combination(tmp_path: Any) -> None:
     assert len(saved_rows) == 4
     assert {row["model"] for row in saved_rows} == {"model-a", "model-b"}
     assert all(row["equivalence_status"] == "nao_executavel" for row in saved_rows)
+    assert all(row["review_status"] == "desativada" for row in saved_rows)
     assert all(row["coverage"] == "82.50" for row in saved_rows)
     assert all(row["type_errors"] == "1" for row in saved_rows)
 

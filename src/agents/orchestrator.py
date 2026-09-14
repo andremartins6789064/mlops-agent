@@ -34,6 +34,7 @@ class OrchestrationResult:
     validation_result: ValidationResult | None = None
     validated_output_dir: str | None = None
     quality_metrics: QualityMetrics | None = None
+    review_enabled: bool = False
     review_incomplete: bool = False
     review_error: str | None = None
     exported_zip_path: str | None = None
@@ -111,7 +112,11 @@ class Orchestrator:
             else None
         )
         if execution_logger is not None:
-            execution_logger.log("execution_started", notebook_path=notebook_path)
+            execution_logger.log(
+                "execution_started",
+                notebook_path=notebook_path,
+                review_enabled=self._reviewer is not None,
+            )
 
         generated_modules: dict[str, str] | None = None
         generated_file_paths: dict[str, str] | None = None
@@ -242,6 +247,7 @@ class Orchestrator:
                 run_output_dir if validation_result is not None else None
             ),
             quality_metrics=quality_metrics,
+            review_enabled=self._reviewer is not None,
             review_incomplete=review_incomplete,
             review_error=review_error,
             exported_zip_path=exported_zip_path,

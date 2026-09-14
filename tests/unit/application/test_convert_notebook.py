@@ -90,7 +90,7 @@ def test_build_llm_client_resolves_provider_credentials(
 
 
 def test_convert_notebook_runs_orchestrator(monkeypatch: MonkeyPatch) -> None:
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
     notebook = Notebook(
         path="tests/fixtures/simple_regression.ipynb",
         cells=[NotebookCell(index=0, cell_type=CellType.CODE, source="print('ok')")],
@@ -105,6 +105,7 @@ def test_convert_notebook_runs_orchestrator(monkeypatch: MonkeyPatch) -> None:
     class _StubOrchestrator:
         def __init__(self, **kwargs: object) -> None:
             captured["has_exporter"] = str("exporter" in kwargs)
+            captured["reviewer"] = kwargs.get("reviewer")
 
         def run(
             self, notebook_path: str, *, output_dir: str | None = None
@@ -124,9 +125,41 @@ def test_convert_notebook_runs_orchestrator(monkeypatch: MonkeyPatch) -> None:
     )
 
     assert captured["has_exporter"] == "True"
+    assert captured["reviewer"] is None
+    assert isinstance(captured["notebook_path"], str)
     assert captured["notebook_path"].endswith("simple_regression.ipynb")
     assert captured["output_dir"] == "output/test-ui"
     assert result is expected_result
+
+
+def test_convert_notebook_enables_reviewer_explicitly(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _StubOrchestrator:
+        def __init__(self, **kwargs: object) -> None:
+            captured["reviewer"] = kwargs.get("reviewer")
+
+        def run(
+            self, notebook_path: str, *, output_dir: str | None = None
+        ) -> OrchestrationResult:
+            return OrchestrationResult(
+                notebook=Notebook(path=notebook_path, cells=[], metadata={}),
+                notebook_analysis={},
+                architecture_plan={},
+            )
+
+    monkeypatch.setattr(convert_notebook_module, "Orchestrator", _StubOrchestrator)
+
+    convert_notebook(
+        ConversionRequest(
+            notebook_path="sample.ipynb",
+            enable_review=True,
+        )
+    )
+
+    assert captured["reviewer"] is not None
 
 
 def test_convert_notebook_passes_feedback_to_agents(monkeypatch: MonkeyPatch) -> None:

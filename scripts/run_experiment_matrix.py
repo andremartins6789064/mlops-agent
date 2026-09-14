@@ -33,6 +33,11 @@ def main() -> int:
     parser.add_argument("--llm-retries", type=int, default=3)
     parser.add_argument("--llm-retry-backoff", type=float, default=5.0)
     parser.add_argument(
+        "--enable-review",
+        action="store_true",
+        help="Enable the optional LLM Reviewer (disabled by default).",
+    )
+    parser.add_argument(
         "--max-run-seconds",
         type=int,
         default=180,
@@ -57,6 +62,7 @@ def main() -> int:
         llm_timeout_seconds=args.llm_timeout,
         llm_max_retries=args.llm_retries,
         llm_retry_backoff_seconds=args.llm_retry_backoff,
+        enable_review=args.enable_review,
         max_run_seconds=args.max_run_seconds,
         run_mutation=not args.skip_mutation,
     )
