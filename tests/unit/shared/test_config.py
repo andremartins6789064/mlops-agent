@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from src.shared.config import Settings
+from src.shared.config import Settings, resolve_provider
 
 
 def test_settings_default_values() -> None:
@@ -27,3 +27,19 @@ def test_settings_reads_environment_overrides(monkeypatch: pytest.MonkeyPatch) -
     assert settings.llm_base_url == "https://api.openai.com/v1"
     assert settings.llm_api_key == "test-key"
     assert settings.llm_model == "gpt-4o-mini"
+
+
+def test_resolve_provider_uses_named_secret_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+
+    base_url, api_key = resolve_provider("groq")
+
+    assert base_url == "https://api.groq.com/openai/v1"
+    assert api_key == "test-groq-key"
+
+
+def test_resolve_provider_rejects_unknown_provider() -> None:
+    with pytest.raises(ValueError, match="Unknown LLM provider"):
+        resolve_provider("unknown")

@@ -83,6 +83,29 @@ def test_harness_records_failed_combination_without_aborting(tmp_path: Any) -> N
     assert rows[1]["error"] == ""
 
 
+def test_harness_records_provider_from_model_spec(tmp_path: Any) -> None:
+    requests: list[ConversionRequest] = []
+
+    def converter(request: ConversionRequest) -> OrchestrationResult:
+        requests.append(request)
+        return _result()
+
+    output_csv = tmp_path / "results.csv"
+    rows = run_experiment_matrix(
+        notebooks=["junior.ipynb"],
+        models=["groq=openai/gpt-oss-120b"],
+        repetitions=1,
+        output_csv=str(output_csv),
+        output_root=str(tmp_path / "runs"),
+        run_mutation=False,
+        converter=converter,
+    )
+
+    assert rows[0]["model"] == "openai/gpt-oss-120b"
+    assert rows[0]["provider"] == "groq"
+    assert requests[0].llm_provider == "groq"
+
+
 def test_harness_records_timeout_and_keeps_incremental_csv(
     tmp_path: Any,
 ) -> None:

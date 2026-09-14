@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -125,6 +126,50 @@ def test_base_client_generate_raises_for_provider_error(
 
     with pytest.raises(LLMClientError, match="request failed"):
         client.generate(prompt="Say hi")
+
+
+def test_base_client_retries_rate_limit_with_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _RateLimitError(Exception):
+        status_code = 429
+
+    class _RetryingCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, *, model: str, messages: list[dict[str, str]]) -> Any:
+            self.calls += 1
+            if self.calls < 3:
+                raise _RateLimitError("rate limit")
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]
+            )
+
+    completions = _RetryingCompletions()
+
+    def _factory(*, base_url: str, api_key: str, timeout: float) -> _FakeOpenAI:
+        return _FakeOpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout,
+            completions=completions,  # type: ignore[arg-type]
+        )
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(base_module, "OpenAI", _factory)
+    monkeypatch.setattr(time, "sleep", sleeps.append)
+    client = BaseOpenAICompatibleClient(
+        base_url="https://example.test/v1",
+        api_key="token",
+        model="test-model",
+        max_retries=2,
+        retry_backoff_seconds=1.0,
+    )
+
+    assert client.generate(prompt="Say hi") == "ok"
+    assert completions.calls == 3
+    assert sleeps == [1.0, 2.0]
 
 
 def test_ollama_client_uses_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

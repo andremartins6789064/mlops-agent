@@ -27,6 +27,7 @@ class ExperimentTimeout(BaseException):
 CSV_FIELDS = (
     "notebook",
     "model",
+    "provider",
     "repetition",
     "duration_seconds",
     "equivalence_status",
@@ -59,6 +60,8 @@ def run_experiment_matrix(
     timeout_seconds: int = 120,
     max_run_seconds: int = 180,
     llm_timeout_seconds: float = 300.0,
+    llm_max_retries: int = 3,
+    llm_retry_backoff_seconds: float = 5.0,
     run_mutation: bool = True,
     converter: Converter = convert_notebook,
 ) -> list[dict[str, str]]:
@@ -77,11 +80,13 @@ def run_experiment_matrix(
         writer = csv.DictWriter(file_obj, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for notebook in notebooks:
-            for model in models:
+            for model_spec in models:
+                provider, model = _parse_model_spec(model_spec)
                 for repetition in range(1, repetitions + 1):
                     row = _run_one_with_timeout(
                         notebook=notebook,
                         model=model,
+                        provider=provider,
                         repetition=repetition,
                         output_root=root,
                         pipeline_command=pipeline_command,
@@ -89,6 +94,8 @@ def run_experiment_matrix(
                         timeout_seconds=timeout_seconds,
                         max_run_seconds=max_run_seconds,
                         llm_timeout_seconds=llm_timeout_seconds,
+                        llm_max_retries=llm_max_retries,
+                        llm_retry_backoff_seconds=llm_retry_backoff_seconds,
                         run_mutation=run_mutation,
                         converter=converter,
                     )
@@ -107,6 +114,7 @@ def _run_one_with_timeout(
     *,
     notebook: str,
     model: str,
+    provider: str | None,
     repetition: int,
     output_root: Path,
     pipeline_command: str | None,
@@ -114,10 +122,17 @@ def _run_one_with_timeout(
     timeout_seconds: int,
     max_run_seconds: int,
     llm_timeout_seconds: float,
+    llm_max_retries: int,
+    llm_retry_backoff_seconds: float,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
-    row = _empty_row(notebook=notebook, model=model, repetition=repetition)
+    row = _empty_row(
+        notebook=notebook,
+        model=model,
+        provider=provider,
+        repetition=repetition,
+    )
 
     def _raise_timeout(signum: int, frame: object) -> None:
         raise ExperimentTimeout
@@ -128,12 +143,15 @@ def _run_one_with_timeout(
         return _run_one(
             notebook=notebook,
             model=model,
+            provider=provider,
             repetition=repetition,
             output_root=output_root,
             pipeline_command=pipeline_command,
             tolerance=tolerance,
             timeout_seconds=timeout_seconds,
             llm_timeout_seconds=llm_timeout_seconds,
+            llm_max_retries=llm_max_retries,
+            llm_retry_backoff_seconds=llm_retry_backoff_seconds,
             run_mutation=run_mutation,
             converter=converter,
         )
@@ -150,22 +168,25 @@ def _run_one(
     *,
     notebook: str,
     model: str,
+    provider: str | None,
     repetition: int,
     output_root: Path,
     pipeline_command: str | None,
     tolerance: float,
     timeout_seconds: int,
     llm_timeout_seconds: float,
+    llm_max_retries: int,
+    llm_retry_backoff_seconds: float,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
     started = time.perf_counter()
-    output_dir = output_root / (
-        f"{Path(notebook).stem}-{_safe_name(model)}-run{repetition}"
-    )
+    run_name = f"{provider or 'default'}-{_safe_name(model)}"
+    output_dir = output_root / (f"{Path(notebook).stem}-{run_name}-run{repetition}")
     row = _empty_row(
         notebook=notebook,
         model=model,
+        provider=provider,
         repetition=repetition,
     )
     try:
@@ -182,7 +203,10 @@ def _run_one(
                 output_dir=str(output_dir),
                 use_llm=True,
                 llm_model=model,
+                llm_provider=provider,
                 llm_timeout_seconds=llm_timeout_seconds,
+                llm_max_retries=llm_max_retries,
+                llm_retry_backoff_seconds=llm_retry_backoff_seconds,
                 progress_callback=report_progress,
             )
         )
@@ -213,12 +237,27 @@ def _run_one(
     return row
 
 
-def _empty_row(*, notebook: str, model: str, repetition: int) -> dict[str, str]:
+def _empty_row(
+    *, notebook: str, model: str, provider: str | None, repetition: int
+) -> dict[str, str]:
     return {field: "" for field in CSV_FIELDS} | {
         "notebook": notebook,
         "model": model,
+        "provider": provider or "",
         "repetition": str(repetition),
     }
+
+
+def _parse_model_spec(model_spec: str) -> tuple[str | None, str]:
+    """Parse ``provider=model`` while preserving provider-specific model IDs."""
+    if "=" not in model_spec:
+        return None, model_spec
+    provider, model = model_spec.split("=", 1)
+    if not provider or not model:
+        raise ValueError(
+            f"Invalid model specification '{model_spec}'; expected provider=model"
+        )
+    return provider, model
 
 
 def _add_result_metrics(row: dict[str, str], result: OrchestrationResult) -> None:

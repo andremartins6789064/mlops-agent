@@ -54,6 +54,41 @@ def test_build_llm_client_passes_configured_timeout(monkeypatch: MonkeyPatch) ->
     assert captured["timeout_seconds"] == 123.0
 
 
+def test_build_llm_client_resolves_provider_credentials(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _StubClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        convert_notebook_module,
+        "BaseOpenAICompatibleClient",
+        _StubClient,
+    )
+    monkeypatch.setattr(
+        convert_notebook_module,
+        "resolve_provider",
+        lambda provider: ("https://groq.example/v1", "secret"),
+    )
+
+    client = _build_llm_client(
+        ConversionRequest(
+            notebook_path="sample.ipynb",
+            use_llm=True,
+            llm_provider="groq",
+            llm_model="test-model",
+        )
+    )
+
+    assert client is not None
+    assert captured["base_url"] == "https://groq.example/v1"
+    assert captured["api_key"] == "secret"
+    assert captured["model"] == "test-model"
+
+
 def test_convert_notebook_runs_orchestrator(monkeypatch: MonkeyPatch) -> None:
     captured: dict[str, str] = {}
     notebook = Notebook(

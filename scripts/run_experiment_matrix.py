@@ -30,6 +30,8 @@ def main() -> int:
     parser.add_argument("--tolerance", type=float, default=0.05)
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--llm-timeout", type=float, default=300.0)
+    parser.add_argument("--llm-retries", type=int, default=3)
+    parser.add_argument("--llm-retry-backoff", type=float, default=5.0)
     parser.add_argument(
         "--max-run-seconds",
         type=int,
@@ -53,6 +55,8 @@ def main() -> int:
         tolerance=args.tolerance,
         timeout_seconds=args.timeout,
         llm_timeout_seconds=args.llm_timeout,
+        llm_max_retries=args.llm_retries,
+        llm_retry_backoff_seconds=args.llm_retry_backoff,
         max_run_seconds=args.max_run_seconds,
         run_mutation=not args.skip_mutation,
     )

@@ -94,6 +94,25 @@ curl http://localhost:11434/v1/models
 
 > Dica: para modelos locais pequenos, prompts em inglês costumam melhorar consistência de geração.
 
+## Matriz com provedores
+
+O harness aceita o provedor junto ao modelo, sem usar `:` ou `/` como
+separadores:
+
+```bash
+uv run python scripts/run_experiment_matrix.py \
+  --notebooks notebooks/junior_regression.ipynb \
+  --models ollama=gemma4:e2b groq=openai/gpt-oss-120b \
+  --repetitions 1 \
+  --llm-timeout 300 \
+  --llm-retries 3 \
+  --llm-retry-backoff 5
+```
+
+O provedor Groq usa `GROQ_API_KEY` do ambiente. A chave nunca é gravada no
+CSV, nos logs ou no nome da pasta de execução. Erros persistentes, como
+limites `429`, são registrados com o motivo sanitizado.
+
 ## Testes e qualidade
 
 Executar testes:

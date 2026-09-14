@@ -12,7 +12,7 @@ from src.domain.interfaces import ILLMClient
 from src.infrastructure.exporters.zip_exporter import ZipExporter
 from src.infrastructure.llm.base import BaseOpenAICompatibleClient
 from src.infrastructure.parsers.notebook_parser import NotebookParser
-from src.shared.config import settings
+from src.shared.config import resolve_provider, settings
 from src.shared.progress import ProgressCallback
 
 
@@ -24,6 +24,9 @@ class ConversionRequest:
     output_dir: str = "output"
     use_llm: bool = False
     llm_timeout_seconds: float = 300.0
+    llm_max_retries: int = 3
+    llm_retry_backoff_seconds: float = 5.0
+    llm_provider: str | None = None
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
@@ -65,9 +68,18 @@ def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
 def _build_llm_client(request: ConversionRequest) -> ILLMClient | None:
     if not request.use_llm:
         return None
+    if request.llm_provider is not None:
+        provider_base_url, provider_api_key = resolve_provider(request.llm_provider)
+    else:
+        provider_base_url, provider_api_key = (
+            settings.llm_base_url,
+            settings.llm_api_key,
+        )
     return BaseOpenAICompatibleClient(
-        base_url=request.llm_base_url or settings.llm_base_url,
-        api_key=request.llm_api_key or settings.llm_api_key,
+        base_url=request.llm_base_url or provider_base_url,
+        api_key=request.llm_api_key or provider_api_key,
         model=request.llm_model or settings.llm_model,
         timeout_seconds=request.llm_timeout_seconds,
+        max_retries=request.llm_max_retries,
+        retry_backoff_seconds=request.llm_retry_backoff_seconds,
     )
