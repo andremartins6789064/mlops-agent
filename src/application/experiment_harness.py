@@ -65,6 +65,8 @@ def run_experiment_matrix(
     llm_max_retries: int = 3,
     llm_retry_backoff_seconds: float = 5.0,
     enable_review: bool = False,
+    review_max_llm_calls: int = 1,
+    review_max_seconds: float = 120.0,
     run_mutation: bool = True,
     converter: Converter = convert_notebook,
 ) -> list[dict[str, str]]:
@@ -100,6 +102,8 @@ def run_experiment_matrix(
                         llm_max_retries=llm_max_retries,
                         llm_retry_backoff_seconds=llm_retry_backoff_seconds,
                         enable_review=enable_review,
+                        review_max_llm_calls=review_max_llm_calls,
+                        review_max_seconds=review_max_seconds,
                         run_mutation=run_mutation,
                         converter=converter,
                     )
@@ -129,6 +133,8 @@ def _run_one_with_timeout(
     llm_max_retries: int,
     llm_retry_backoff_seconds: float,
     enable_review: bool,
+    review_max_llm_calls: int,
+    review_max_seconds: float,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
@@ -158,6 +164,8 @@ def _run_one_with_timeout(
             llm_max_retries=llm_max_retries,
             llm_retry_backoff_seconds=llm_retry_backoff_seconds,
             enable_review=enable_review,
+            review_max_llm_calls=review_max_llm_calls,
+            review_max_seconds=review_max_seconds,
             run_mutation=run_mutation,
             converter=converter,
         )
@@ -184,6 +192,8 @@ def _run_one(
     llm_max_retries: int,
     llm_retry_backoff_seconds: float,
     enable_review: bool,
+    review_max_llm_calls: int,
+    review_max_seconds: float,
     run_mutation: bool,
     converter: Converter,
 ) -> dict[str, str]:
@@ -212,6 +222,8 @@ def _run_one(
                 llm_model=model,
                 llm_provider=provider,
                 enable_review=enable_review,
+                review_max_llm_calls=review_max_llm_calls,
+                review_max_seconds=review_max_seconds,
                 llm_timeout_seconds=llm_timeout_seconds,
                 llm_max_retries=llm_max_retries,
                 llm_retry_backoff_seconds=llm_retry_backoff_seconds,

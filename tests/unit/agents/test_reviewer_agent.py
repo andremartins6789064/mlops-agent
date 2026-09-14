@@ -133,7 +133,7 @@ def test_reviewer_uses_llm_fixer_when_no_manual_fixer(tmp_path: Any) -> None:
     assert result.iterations == 1
 
 
-def test_reviewer_bounds_stage_context_and_consolidates_findings(
+def test_reviewer_bounds_context_and_limits_calls(
     tmp_path: Any,
 ) -> None:
     llm = _StubLLMClient(
@@ -165,10 +165,47 @@ def test_reviewer_bounds_stage_context_and_consolidates_findings(
         generated_tests={"training": "def test_training() -> None:\n" + "y" * 500},
     )
 
-    assert len(llm.prompts) == 2
+    assert len(llm.prompts) == 1
     assert len(llm.prompts[0]) < 800
-    assert "partial_findings" in llm.prompts[-1]
-    assert "module_code" not in llm.prompts[-1].split("Findings JSON:", 1)[1]
+
+
+def test_reviewer_marks_unprocessed_stages_inconclusive(tmp_path: Any) -> None:
+    llm = _StubLLMClient(
+        '{"module_code":"def train_model() -> None:\\n    return None\\n"}'
+    )
+
+    def _validator(project_dir: str) -> ValidationResult:
+        return ValidationResult(
+            lint_errors=1,
+            type_errors=0,
+            test_coverage=90.0,
+            lint_output="E501",
+            type_output="",
+            test_output="",
+            lint_exit_code=1,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    reviewer = ReviewerAgent(
+        validator=_validator,
+        llm_client=llm,
+        max_llm_calls=1,
+    )
+    result = reviewer.review(
+        project_dir=str(tmp_path),
+        generated_modules={
+            "training": "def train_model() -> None:\n    pass\n",
+            "evaluation": "def evaluate() -> None:\n    pass\n",
+        },
+        generated_tests={
+            "training": "def test_training() -> None:\n    assert True\n",
+            "evaluation": "def test_evaluation() -> None:\n    assert True\n",
+        },
+    )
+
+    assert llm.calls == 1
+    assert result.review_incomplete is True
 
 
 def test_reviewer_marks_invalid_partial_response_incomplete(tmp_path: Any) -> None:

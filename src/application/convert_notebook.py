@@ -31,6 +31,8 @@ class ConversionRequest:
     llm_api_key: str | None = None
     llm_model: str | None = None
     enable_review: bool = False
+    review_max_llm_calls: int = 1
+    review_max_seconds: float = 120.0
     architecture_feedback: str | None = None
     stage_feedback: dict[str, str] | None = None
     progress_callback: ProgressCallback | None = None
@@ -42,10 +44,18 @@ def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
     reviewer = None
     if request.enable_review:
         reviewer_budget, reviewer_delay = reviewer_limits(request.llm_provider)
+        reviewer_client = _build_llm_client(
+            request,
+            timeout_seconds=min(
+                request.llm_timeout_seconds, request.review_max_seconds
+            ),
+        )
         reviewer = ReviewerAgent(
-            llm_client=llm_client,
+            llm_client=reviewer_client,
             context_budget_tokens=reviewer_budget,
             inter_call_delay_seconds=reviewer_delay,
+            max_llm_calls=request.review_max_llm_calls,
+            max_review_seconds=request.review_max_seconds,
         )
     orchestrator = Orchestrator(
         notebook_parser=NotebookParser(),
@@ -74,7 +84,11 @@ def convert_notebook(request: ConversionRequest) -> OrchestrationResult:
     )
 
 
-def _build_llm_client(request: ConversionRequest) -> ILLMClient | None:
+def _build_llm_client(
+    request: ConversionRequest,
+    *,
+    timeout_seconds: float | None = None,
+) -> ILLMClient | None:
     if not request.use_llm:
         return None
     if request.llm_provider is not None:
@@ -88,7 +102,7 @@ def _build_llm_client(request: ConversionRequest) -> ILLMClient | None:
         base_url=request.llm_base_url or provider_base_url,
         api_key=request.llm_api_key or provider_api_key,
         model=request.llm_model or settings.llm_model,
-        timeout_seconds=request.llm_timeout_seconds,
+        timeout_seconds=timeout_seconds or request.llm_timeout_seconds,
         max_retries=request.llm_max_retries,
         retry_backoff_seconds=request.llm_retry_backoff_seconds,
     )

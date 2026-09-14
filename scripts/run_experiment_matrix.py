@@ -37,6 +37,8 @@ def main() -> int:
         action="store_true",
         help="Enable the optional LLM Reviewer (disabled by default).",
     )
+    parser.add_argument("--review-max-calls", type=int, default=1)
+    parser.add_argument("--review-max-seconds", type=float, default=120.0)
     parser.add_argument(
         "--max-run-seconds",
         type=int,
@@ -63,6 +65,8 @@ def main() -> int:
         llm_max_retries=args.llm_retries,
         llm_retry_backoff_seconds=args.llm_retry_backoff,
         enable_review=args.enable_review,
+        review_max_llm_calls=args.review_max_calls,
+        review_max_seconds=args.review_max_seconds,
         max_run_seconds=args.max_run_seconds,
         run_mutation=not args.skip_mutation,
     )

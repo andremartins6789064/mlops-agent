@@ -24,6 +24,10 @@ class ReviewerResult:
     review_error: str | None = None
 
 
+class ReviewBudgetExceededError(RuntimeError):
+    """Raised when the optional Reviewer reaches its configured budget."""
+
+
 class ReviewerAgent:
     """Run quality checks and trigger limited auto-correction loop."""
 
@@ -33,23 +37,33 @@ class ReviewerAgent:
         validator: Callable[[str], ValidationResult] | None = None,
         llm_client: ILLMClient | None = None,
         prompt_path: str = "src/infrastructure/prompts/reviewer.txt",
-        max_iterations: int = 2,
+        max_iterations: int = 1,
         context_budget_tokens: int = 2_000,
         inter_call_delay_seconds: float = 0.0,
+        max_llm_calls: int = 1,
+        max_review_seconds: float = 120.0,
     ) -> None:
         if context_budget_tokens <= 0:
             raise ValueError("context_budget_tokens must be positive")
         if inter_call_delay_seconds < 0:
             raise ValueError("inter_call_delay_seconds cannot be negative")
+        if max_llm_calls <= 0:
+            raise ValueError("max_llm_calls must be positive")
+        if max_review_seconds <= 0:
+            raise ValueError("max_review_seconds must be positive")
         self._validator = validator or validate_output
         self._llm_client = llm_client
         self._prompt_path = prompt_path
         self._max_iterations = max_iterations
         self._context_budget_tokens = context_budget_tokens
         self._inter_call_delay_seconds = inter_call_delay_seconds
+        self._max_llm_calls = max_llm_calls
+        self._max_review_seconds = max_review_seconds
         self._current_tests: dict[str, str] = {}
         self._last_review_incomplete = False
         self._last_review_error: str | None = None
+        self._review_started = 0.0
+        self._llm_calls = 0
 
     def review(
         self,
@@ -67,6 +81,8 @@ class ReviewerAgent:
         self._current_tests = dict(generated_tests)
         self._last_review_incomplete = False
         self._last_review_error = None
+        self._review_started = time.monotonic()
+        self._llm_calls = 0
         active_fixer = fixer
         if active_fixer is None and self._llm_client is not None:
             active_fixer = self._fix_with_llm
@@ -135,19 +151,23 @@ class ReviewerAgent:
         }
         fixed_modules = dict(modules)
         findings: list[dict[str, str]] = []
-        for stage_name, source_code in modules.items():
+        affected_stages = self._affected_stages(modules, validation)
+        for stage_name in affected_stages:
+            if self._llm_calls >= self._max_llm_calls:
+                self._mark_incomplete("Reviewer call budget exceeded")
+                break
             payload = {
                 "stage_name": stage_name,
-                "module_code": source_code,
+                "module_code": modules[stage_name],
                 "tests": self._read_stage_tests(stage_name),
                 "diagnostics": diagnostics,
             }
             prompt, truncated = self._build_prompt(prompt_template, payload)
             try:
+                self._check_budget()
                 raw_response = self._generate(prompt)
             except Exception as exc:  # noqa: BLE001
-                self._last_review_incomplete = True
-                self._last_review_error = f"{stage_name}: {exc}"
+                self._mark_incomplete(f"{stage_name}: {exc}")
                 findings.append(
                     {
                         "stage": stage_name,
@@ -180,8 +200,7 @@ class ReviewerAgent:
                     }
                 )
             else:
-                self._last_review_incomplete = True
-                self._last_review_error = (
+                self._mark_incomplete(
                     f"{stage_name}: no valid module code in reviewer response"
                 )
                 findings.append(
@@ -191,12 +210,36 @@ class ReviewerAgent:
                         "truncated": str(truncated).lower(),
                     }
                 )
-        try:
-            self._consolidate_findings(findings)
-        except Exception as exc:  # noqa: BLE001
-            self._last_review_incomplete = True
-            self._last_review_error = f"consolidation: {exc}"
+        if len(findings) < len(affected_stages):
+            self._mark_incomplete("Reviewer did not process every affected stage")
         return fixed_modules
+
+    def _affected_stages(
+        self, modules: dict[str, str], validation: ValidationResult
+    ) -> list[str]:
+        """Select mentioned stages, or all when attribution is unknown."""
+        diagnostics = " ".join(
+            (validation.lint_output, validation.type_output, validation.test_output)
+        ).lower()
+        affected = [
+            stage
+            for stage in modules
+            if stage.lower() in diagnostics or f"test_{stage.lower()}" in diagnostics
+        ]
+        return affected or list(modules)
+
+    def _check_budget(self) -> None:
+        """Stop optional review work when its time budget is exhausted."""
+        elapsed = time.monotonic() - self._review_started
+        if elapsed >= self._max_review_seconds:
+            raise ReviewBudgetExceededError(
+                f"Reviewer time budget exceeded ({self._max_review_seconds:.1f}s)"
+            )
+
+    def _mark_incomplete(self, error: str) -> None:
+        """Record an inconclusive review without turning it into approval."""
+        self._last_review_incomplete = True
+        self._last_review_error = error
 
     def _read_stage_tests(self, stage_name: str) -> str:
         """Read the relevant generated test when it is available."""
@@ -231,9 +274,13 @@ class ReviewerAgent:
         """Call the LLM with configurable spacing between requests."""
         if self._llm_client is None:
             return ""
+        self._check_budget()
         if self._inter_call_delay_seconds:
             time.sleep(self._inter_call_delay_seconds)
+        self._check_budget()
+        self._llm_calls += 1
         response = self._llm_client.generate(prompt=prompt)
+        self._check_budget()
         return str(response)
 
     def _consolidate_findings(self, findings: list[dict[str, str]]) -> None:
