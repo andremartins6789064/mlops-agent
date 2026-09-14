@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     llm_api_key: str = "ollama"
     llm_model: str = "smollm2:1.7b"
     groq_api_key: str | None = None
+    openrouter_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -39,6 +40,12 @@ PROVIDERS = {
         api_key_env="GROQ_API_KEY",
         reviewer_context_budget_tokens=1_500,
         reviewer_inter_call_delay_seconds=2.0,
+    ),
+    "openrouter": ProviderConfig(
+        base_url="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        reviewer_context_budget_tokens=1_500,
+        reviewer_inter_call_delay_seconds=1.0,
     ),
 }
 
