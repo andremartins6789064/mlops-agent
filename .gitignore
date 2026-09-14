@@ -28,3 +28,5 @@ htmlcov/
 # Projeto
 output/
 .pre-commit-cache/
+
+.env.backup*
