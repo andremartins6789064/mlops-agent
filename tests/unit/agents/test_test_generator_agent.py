@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.agents.test_generator import PipelineTestGeneratorAgent
 from src.domain.interfaces import ILLMClient
+from src.shared.python_source import GENERATED_TEST_SRC_BOOTSTRAP
 
 
 class _StubLLMClient(ILLMClient):
@@ -33,12 +34,27 @@ def test_test_generator_creates_tests_for_all_modules() -> None:
         "evaluation",
     }
     assert "def test_feature_eng_load_and_split" in tests["feature_engineering"]
-    assert "parents[1] / 'src'" in tests["feature_engineering"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["feature_engineering"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["training"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["inference"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["evaluation"]
+
+
+def _llm_test_with_src_bootstrap(*, stage_name: str) -> str:
+    return (
+        "from __future__ import annotations\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"{GENERATED_TEST_SRC_BOOTSTRAP}\n"
+        f"import {stage_name} as stage_module\n\n"
+        "def test_custom() -> None:\n"
+        "    assert True\n"
+    )
 
 
 def test_test_generator_uses_llm_test_code_when_available() -> None:
     llm_response = json.dumps(
-        {"test_code": "def test_custom() -> None:\n    assert True\n"}
+        {"test_code": _llm_test_with_src_bootstrap(stage_name="feature_engineering")}
     )
     generator = PipelineTestGeneratorAgent(llm_client=_StubLLMClient(llm_response))
 
@@ -48,13 +64,14 @@ def test_test_generator_uses_llm_test_code_when_available() -> None:
         }
     )
 
-    assert tests["feature_engineering"].startswith("def test_custom")
+    assert "def test_custom" in tests["feature_engineering"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["feature_engineering"]
 
 
 def test_test_generator_accepts_fenced_python_with_surrounding_prose() -> None:
     response = (
         "Here is the test file:\n"
-        "```python\ndef test_custom() -> None:\n    assert True\n```\n"
+        f"```python\n{_llm_test_with_src_bootstrap(stage_name='training')}```\n"
         "Done."
     )
     generator = PipelineTestGeneratorAgent(llm_client=_StubLLMClient(response))
@@ -63,7 +80,8 @@ def test_test_generator_accepts_fenced_python_with_surrounding_prose() -> None:
         generated_modules={"training": "def train_model() -> None:\n    pass\n"}
     )
 
-    assert tests["training"].startswith("def test_custom")
+    assert "def test_custom" in tests["training"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["training"]
 
 
 def test_test_generator_prompt_requires_exact_module_signatures() -> None:
@@ -79,9 +97,24 @@ def test_test_generator_prompt_requires_exact_module_signatures() -> None:
     assert "exact signature" in prompt
     assert "Do not invent functions" in prompt
     assert "Do not call a function with arguments" in prompt
+    assert 'parents[1] / "src"' in prompt
+    assert "without extra PYTHONPATH" in prompt
 
 
 def test_test_generator_accepts_raw_python_response() -> None:
+    generator = PipelineTestGeneratorAgent(
+        llm_client=_StubLLMClient(_llm_test_with_src_bootstrap(stage_name="training"))
+    )
+
+    tests = generator.generate_tests(
+        generated_modules={"training": "def train_model() -> None:\n    pass\n"}
+    )
+
+    assert "def test_custom" in tests["training"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["training"]
+
+
+def test_test_generator_falls_back_when_llm_omits_src_bootstrap() -> None:
     generator = PipelineTestGeneratorAgent(
         llm_client=_StubLLMClient("def test_custom() -> None:\n    assert True\n")
     )
@@ -90,7 +123,8 @@ def test_test_generator_accepts_raw_python_response() -> None:
         generated_modules={"training": "def train_model() -> None:\n    pass\n"}
     )
 
-    assert tests["training"].startswith("def test_custom")
+    assert "def test_training_train_and_save_model" in tests["training"]
+    assert GENERATED_TEST_SRC_BOOTSTRAP in tests["training"]
 
 
 def test_test_generator_falls_back_when_llm_test_is_invalid() -> None:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from src.shared.python_source import (
+    GENERATED_TEST_SRC_BOOTSTRAP,
     extract_imported_libraries,
+    generated_test_bootstraps_src,
     generated_test_matches_module,
     python_syntax_error,
 )
@@ -53,3 +55,53 @@ def test_generated_test_matches_module_rejects_wrong_argument_count() -> None:
     )
 
     assert not generated_test_matches_module(test_source, module_source, "training")
+
+
+def _training_test_with_src_bootstrap() -> str:
+    return (
+        "from __future__ import annotations\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"{GENERATED_TEST_SRC_BOOTSTRAP}\n"
+        "import training as stage_module\n\n"
+        "def test_train() -> None:\n"
+        "    stage_module.train_model([1], [2])\n"
+    )
+
+
+def test_generated_test_bootstraps_src_detects_template_insert() -> None:
+    source = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"{GENERATED_TEST_SRC_BOOTSTRAP}\n"
+        "import training as stage_module\n"
+    )
+    assert generated_test_bootstraps_src(source)
+
+
+def test_generated_test_bootstraps_src_rejects_missing_insert() -> None:
+    source = "from training import train_model\n\ndef test_train() -> None:\n    pass\n"
+    assert not generated_test_bootstraps_src(source)
+
+
+def test_generated_test_matches_module_rejects_missing_src_bootstrap() -> None:
+    test_source = (
+        "import training as stage_module\n\n"
+        "def test_train() -> None:\n"
+        "    stage_module.train_model([1], [2])\n"
+    )
+    module_source = (
+        "def train_model(features: list[int], labels: list[int]) -> object:\n"
+        "    return features\n"
+    )
+    assert not generated_test_matches_module(test_source, module_source, "training")
+
+
+def test_generated_test_matches_module_accepts_src_bootstrap() -> None:
+    module_source = (
+        "def train_model(features: list[int], labels: list[int]) -> object:\n"
+        "    return features\n"
+    )
+    assert generated_test_matches_module(
+        _training_test_with_src_bootstrap(), module_source, "training"
+    )

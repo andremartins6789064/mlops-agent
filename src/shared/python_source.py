@@ -7,6 +7,10 @@ import sys
 
 _STDLIB_MODULES = set(sys.stdlib_module_names) | {"__future__"}
 
+GENERATED_TEST_SRC_BOOTSTRAP = (
+    "sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))"
+)
+
 
 def python_syntax_error(source: str) -> str | None:
     """Return a syntax error message, or ``None`` when source is valid."""
@@ -42,6 +46,9 @@ def generated_test_matches_module(
         test_tree = ast.parse(test_source)
         module_tree = ast.parse(module_source)
     except SyntaxError:
+        return False
+
+    if not generated_test_bootstraps_src(test_source):
         return False
 
     module_libraries = extract_imported_libraries(module_source)
@@ -94,3 +101,54 @@ def generated_test_matches_module(
             ):
                 return False
     return True
+
+
+def generated_test_bootstraps_src(source: str) -> bool:
+    """Return whether tests insert the generated ``src/`` directory on ``sys.path``."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    imports_sys = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(
+            alias.name == "sys" for alias in node.names
+        ):
+            imports_sys = True
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "sys"
+            and any(alias.name == "path" for alias in node.names)
+        ):
+            imports_sys = True
+    if not imports_sys:
+        return False
+    return any(
+        _is_src_path_insert(node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    )
+
+
+def _is_src_path_insert(node: ast.Call) -> bool:
+    """Return True for ``sys.path.insert(0, <path built from __file__ / src>)``."""
+    func = node.func
+    if not isinstance(func, ast.Attribute) or func.attr != "insert":
+        return False
+    if not isinstance(func.value, ast.Attribute) or func.value.attr != "path":
+        return False
+    if not isinstance(func.value.value, ast.Name) or func.value.value.id != "sys":
+        return False
+    if len(node.args) < 2:
+        return False
+    index = node.args[0]
+    if not isinstance(index, ast.Constant) or index.value != 0:
+        return False
+    names: set[str] = set()
+    constants: set[object] = set()
+    for child in ast.walk(node.args[1]):
+        if isinstance(child, ast.Name):
+            names.add(child.id)
+        elif isinstance(child, ast.Constant):
+            constants.add(child.value)
+    return "__file__" in names and "src" in constants

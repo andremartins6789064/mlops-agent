@@ -17,6 +17,11 @@ Requirements:
   standard/test dependency.
 - Use English names and docstrings.
 - Keep compatibility with Ruff and mypy strict mode.
+- Tests are written to `tests/` and modules live in `src/`. Prefix the file with
+  this bootstrap so collection works after unzip, without extra PYTHONPATH:
+  `import sys`
+  `from pathlib import Path`
+  `sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))`
 - Do not add explanations before or after the fenced block.
 - Do not wrap the code in JSON. Legacy JSON with a `test_code` field is accepted
   only as a compatibility fallback.
