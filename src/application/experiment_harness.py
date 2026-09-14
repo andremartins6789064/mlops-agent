@@ -6,6 +6,7 @@ import ast
 import csv
 import shlex
 import signal
+import sys
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -245,13 +246,13 @@ def _add_equivalence(
     tolerance: float,
     timeout_seconds: int,
 ) -> None:
-    if pipeline_command is None:
-        row["equivalence_status"] = "nao_executavel"
-        row["equivalence_error"] = "pipeline command not configured"
-        return
-    command = pipeline_command.format(
-        output_dir=str(output_dir),
-        notebook=notebook,
+    command = (
+        pipeline_command.format(
+            output_dir=str(output_dir),
+            notebook=notebook,
+        )
+        if pipeline_command is not None
+        else f"{sys.executable} src/main.py"
     )
     result = run_equivalence(
         notebook_path=notebook,

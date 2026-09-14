@@ -30,5 +30,16 @@ Output format (pure JSON, no markdown, no extra text):
       "inputs": "true labels and predictions",
       "outputs": "metrics dictionary"
     }
+  },
+  "entrypoint": {
+    "path": "src/main.py",
+    "command": "python src/main.py",
+    "metric_name": "final_mse",
+    "stages": [
+      "feature_engineering",
+      "training",
+      "inference",
+      "evaluation"
+    ]
   }
 }

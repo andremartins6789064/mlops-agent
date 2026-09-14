@@ -46,6 +46,8 @@ def test_architecture_agent_uses_llm_result_when_valid() -> None:
     result = agent.plan({"libraries": []})
 
     assert result["modules"]["training"]["functions"] == ["train_model"]
+    assert result["entrypoint"]["path"] == "src/main.py"
+    assert result["entrypoint"]["metric_name"] == "final_mse"
 
 
 def test_architecture_agent_falls_back_when_llm_response_is_invalid() -> None:

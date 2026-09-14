@@ -1,6 +1,7 @@
 project_name: "{{ project_name }}"
 structure:
   - src:
+      - main.py
       - feature_engineering.py
       - training.py
       - inference.py

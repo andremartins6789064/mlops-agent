@@ -11,6 +11,18 @@ from src.shared.llm_parsing import parse_json_object
 class ArchitectureAgent:
     """Build architecture plan from notebook analysis."""
 
+    _DEFAULT_ENTRYPOINT = {
+        "path": "src/main.py",
+        "command": "python src/main.py",
+        "metric_name": "final_mse",
+        "stages": [
+            "feature_engineering",
+            "training",
+            "inference",
+            "evaluation",
+        ],
+    }
+
     def __init__(
         self,
         *,
@@ -29,8 +41,8 @@ class ArchitectureAgent:
         if self._llm_client is not None:
             llm_result = self._plan_with_llm(notebook_analysis)
             if llm_result is not None:
-                return llm_result
-        return self._plan_with_templates(notebook_analysis)
+                return self._with_entrypoint(llm_result)
+        return self._with_entrypoint(self._plan_with_templates(notebook_analysis))
 
     def _plan_with_llm(
         self, notebook_analysis: dict[str, Any]
@@ -120,3 +132,17 @@ class ArchitectureAgent:
             ):
                 return False
         return True
+
+    def _with_entrypoint(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Ensure every architecture plan exposes the executable contract."""
+        entrypoint = plan.get("entrypoint")
+        if not isinstance(entrypoint, dict):
+            plan["entrypoint"] = dict(self._DEFAULT_ENTRYPOINT)
+            return plan
+
+        normalized = dict(self._DEFAULT_ENTRYPOINT)
+        normalized.update(
+            {key: value for key, value in entrypoint.items() if key in normalized}
+        )
+        plan["entrypoint"] = normalized
+        return plan

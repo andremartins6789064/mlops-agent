@@ -35,6 +35,7 @@ class ZipExporter(IExporter):
             project_root=str(project_root),
             generated_modules=generated_modules,
         )
+        self._writer.write_entrypoint(project_root=str(project_root))
         self._writer.write_stage_tests(
             project_root=str(project_root),
             generated_tests=generated_tests,

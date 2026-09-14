@@ -14,6 +14,11 @@ task, not a greenfield generation task:
   dependencies required for that logic.
 - If the supplied cells are empty, produce the smallest valid module consistent
   with the module plan and do not invent notebook behavior.
+- Preserve the public contracts used by `src/main.py`: feature engineering
+  exposes data loading and preparation, training exposes model fitting,
+  inference exposes prediction, and evaluation exposes a metrics mapping.
+- Evaluation must include a numeric `final_mse` metric whenever the notebook
+  computes a final mean-squared error. Do not rename that metric.
 
 Follow these internal steps before final output:
 1) Step 1 - Signatures: derive function signatures from the notebook logic and
