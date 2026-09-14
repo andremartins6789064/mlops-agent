@@ -29,18 +29,31 @@ class MutationResult:
     survived_mutations: int
     timed_out_mutations: int = 0
     errors: list[str] | None = None
+    baseline_passed: bool = True
+    baseline_error: str | None = None
 
     @property
     def mutation_score(self) -> float:
         """Return the fraction of mutations detected by the test suite."""
-        if self.total_mutations == 0:
+        if not self.baseline_passed or self.total_mutations == 0:
             return 0.0
         return self.killed_mutations / self.total_mutations
 
     @property
     def passed(self) -> bool:
         """Return whether every mutation was detected."""
-        return self.total_mutations > 0 and self.survived_mutations == 0
+        return (
+            self.baseline_passed
+            and self.total_mutations > 0
+            and self.survived_mutations == 0
+        )
+
+    @property
+    def status(self) -> str:
+        """Return a reportable outcome for the mutation check."""
+        if not self.baseline_passed:
+            return "suite_invalida"
+        return "aprovada" if self.passed else "reprovada"
 
 
 def run_mutation_check(
@@ -53,6 +66,18 @@ def run_mutation_check(
         raise ValueError("timeout_seconds must be positive")
 
     root = Path(project_dir).resolve()
+    baseline = _run_tests(root, timeout_seconds)
+    if baseline[0] is False:
+        error = baseline[1] or "baseline test suite failed"
+        return MutationResult(
+            total_mutations=0,
+            killed_mutations=0,
+            survived_mutations=0,
+            errors=[error],
+            baseline_passed=False,
+            baseline_error=error,
+        )
+
     targets = _find_function_targets(root / "src")
     errors: list[str] = []
     killed = 0
@@ -75,7 +100,7 @@ def run_mutation_check(
                     check=False,
                 )
             except subprocess.TimeoutExpired:
-                killed += 1
+                survived += 1
                 timed_out += 1
                 continue
 
@@ -95,6 +120,29 @@ def run_mutation_check(
         survived_mutations=survived,
         timed_out_mutations=timed_out,
         errors=errors or None,
+    )
+
+
+def _run_tests(root: Path, timeout_seconds: int) -> tuple[bool, str | None]:
+    """Run the unmodified suite before attempting any mutation."""
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "tests", "-q"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"baseline test suite timed out after {timeout_seconds}s"
+
+    if completed.returncode == 0:
+        return True, None
+    output = (completed.stdout + "\n" + completed.stderr).strip()
+    return (
+        False,
+        f"baseline test suite failed with status {completed.returncode}: {output}",
     )
 
 

@@ -38,6 +38,7 @@ CSV_FIELDS = (
     "coverage",
     "lint_errors",
     "type_errors",
+    "mutation_status",
     "mutation_score",
     "mutation_survivors",
     "empty_functions",
@@ -198,8 +199,12 @@ def _run_one(
                 str(output_dir),
                 timeout_seconds=timeout_seconds,
             )
-            row["mutation_score"] = f"{mutation.mutation_score:.4f}"
-            row["mutation_survivors"] = str(mutation.survived_mutations)
+            row["mutation_status"] = mutation.status
+            if mutation.baseline_passed:
+                row["mutation_score"] = f"{mutation.mutation_score:.4f}"
+                row["mutation_survivors"] = str(mutation.survived_mutations)
+            else:
+                row["error"] = mutation.baseline_error or "mutation baseline failed"
         row["empty_functions"] = str(_count_empty_functions(result.generated_modules))
     except Exception as exc:  # noqa: BLE001
         row["error"] = str(exc)

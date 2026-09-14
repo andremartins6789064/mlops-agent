@@ -26,6 +26,7 @@ def main() -> int:
 
     result = run_mutation_check(args.project_dir, timeout_seconds=args.timeout)
     print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+    print(f"mutation_status={result.status}")
     print(f"mutation_score={result.mutation_score:.3f}")
     return 0 if result.passed else 1
 

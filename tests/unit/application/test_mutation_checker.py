@@ -53,6 +53,24 @@ def test_mutation_checker_rejects_placeholder_suite(tmp_path: Any) -> None:
     assert not result.passed
 
 
+def test_mutation_checker_rejects_invalid_baseline_suite(tmp_path: Any) -> None:
+    _write_project(
+        tmp_path,
+        "import module_that_does_not_exist\n\n"
+        "def test_never_collects() -> None:\n"
+        "    assert True\n",
+    )
+
+    result = run_mutation_check(str(tmp_path))
+
+    assert result.status == "suite_invalida"
+    assert not result.baseline_passed
+    assert result.total_mutations == 0
+    assert result.mutation_score == 0.0
+    assert not result.passed
+    assert result.baseline_error is not None
+
+
 def test_mutation_checker_handles_project_without_functions(tmp_path: Any) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()

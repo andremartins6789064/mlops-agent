@@ -74,6 +74,7 @@ def test_harness_records_failed_combination_without_aborting(tmp_path: Any) -> N
         repetitions=1,
         output_csv=str(tmp_path / "results.csv"),
         output_root=str(tmp_path / "runs"),
+        run_mutation=False,
         converter=converter,
     )
 
