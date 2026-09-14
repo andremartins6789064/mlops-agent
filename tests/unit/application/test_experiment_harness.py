@@ -13,6 +13,7 @@ from src.application.convert_notebook import ConversionRequest
 from src.application.experiment_harness import (
     DEFAULT_EXPERIMENT_NOTEBOOKS,
     InvalidExperimentNotebookError,
+    resolve_generated_pipeline_dir,
     run_experiment_matrix,
     validate_experiment_notebooks,
 )
@@ -44,7 +45,7 @@ def _stub_converter(
     return converter
 
 
-def _result() -> OrchestrationResult:
+def _result(*, exported_zip_path: str | None = None) -> OrchestrationResult:
     return OrchestrationResult(
         notebook=Notebook(path="demo.ipynb", cells=[], metadata={}),
         notebook_analysis={},
@@ -59,6 +60,7 @@ def _result() -> OrchestrationResult:
             test_coverage=82.5,
             review_iterations=1,
         ),
+        exported_zip_path=exported_zip_path,
     )
 
 
@@ -161,6 +163,55 @@ def test_harness_records_timeout_and_keeps_incremental_csv(
     with output_csv.open(newline="", encoding="utf-8") as file_obj:
         saved_rows = list(csv.DictReader(file_obj))
     assert saved_rows[0]["error"] == "timeout after 1s"
+
+
+def test_resolve_generated_pipeline_dir_uses_exported_project(
+    tmp_path: Any,
+) -> None:
+    output_dir = tmp_path / "run"
+    zip_path = output_dir / "junior.zip"
+
+    assert (
+        resolve_generated_pipeline_dir(output_dir, exported_zip_path=str(zip_path))
+        == output_dir / "junior"
+    )
+    assert (
+        resolve_generated_pipeline_dir(output_dir, exported_zip_path=None) == output_dir
+    )
+
+
+def test_harness_equivalence_runs_entrypoint_in_exported_tree(
+    tmp_path: Any,
+) -> None:
+    notebook = _metric_notebook(tmp_path, "junior.ipynb")
+
+    def converter(request: ConversionRequest) -> OrchestrationResult:
+        output = Path(request.output_dir)
+        review_src = output / "src"
+        review_src.mkdir(parents=True, exist_ok=True)
+        (review_src / "training.py").write_text("def train() -> None:\n    pass\n")
+        project_src = output / "junior" / "src"
+        project_src.mkdir(parents=True, exist_ok=True)
+        (project_src / "main.py").write_text(
+            "print('final_mse=1.0')\n", encoding="utf-8"
+        )
+        zip_path = output / "junior.zip"
+        zip_path.write_bytes(b"unused")
+        return _result(exported_zip_path=str(zip_path))
+
+    rows = run_experiment_matrix(
+        notebooks=[notebook],
+        models=["model-a"],
+        repetitions=1,
+        output_csv=str(tmp_path / "results.csv"),
+        output_root=str(tmp_path / "runs"),
+        run_mutation=False,
+        converter=converter,
+    )
+
+    assert rows[0]["equivalence_status"] == "equivalente"
+    assert rows[0]["equivalence_error"] == ""
+    assert "No such file or directory" not in rows[0]["error"]
 
 
 def test_harness_rejects_fixture_notebook_before_conversion(tmp_path: Any) -> None:

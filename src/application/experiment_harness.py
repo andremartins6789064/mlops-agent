@@ -319,6 +319,7 @@ def _run_one(
             row,
             notebook=notebook,
             output_dir=output_dir,
+            exported_zip_path=result.exported_zip_path,
             pipeline_command=pipeline_command,
             tolerance=tolerance,
             timeout_seconds=timeout_seconds,
@@ -387,18 +388,37 @@ def _add_result_metrics(row: dict[str, str], result: OrchestrationResult) -> Non
         row["type_errors"] = str(metrics.type_errors)
 
 
+def resolve_generated_pipeline_dir(
+    output_dir: Path, *, exported_zip_path: str | None
+) -> Path:
+    """Return the exported project tree measured by functional equivalence.
+
+    T-29 choice (b): run equivalence against the artifact the user receives
+    (``<output_dir>/<project>/src/main.py``), not the review workspace at
+    ``output_dir``. Option (a) would copy the entrypoint into the review tree
+    and keep measuring a different layout than the zip.
+    """
+    if exported_zip_path:
+        return Path(exported_zip_path).with_suffix("")
+    return output_dir
+
+
 def _add_equivalence(
     row: dict[str, str],
     *,
     notebook: str,
     output_dir: Path,
+    exported_zip_path: str | None,
     pipeline_command: str | None,
     tolerance: float,
     timeout_seconds: int,
 ) -> None:
+    pipeline_dir = resolve_generated_pipeline_dir(
+        output_dir, exported_zip_path=exported_zip_path
+    )
     command = (
         pipeline_command.format(
-            output_dir=str(output_dir),
+            output_dir=str(pipeline_dir),
             notebook=notebook,
         )
         if pipeline_command is not None
@@ -407,7 +427,7 @@ def _add_equivalence(
     result = run_equivalence(
         notebook_path=notebook,
         pipeline_command=shlex.split(command),
-        pipeline_dir=str(output_dir),
+        pipeline_dir=str(pipeline_dir),
         tolerance=tolerance,
         timeout_seconds=timeout_seconds,
     )
