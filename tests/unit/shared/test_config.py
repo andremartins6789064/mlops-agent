@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from src.shared.config import Settings, resolve_provider
+from src.shared.config import Settings, resolve_provider, reviewer_limits
 
 
 def test_settings_default_values() -> None:
@@ -51,6 +51,35 @@ def test_resolve_provider_supports_openrouter(
     assert api_key == "test-openrouter-key"
 
 
+def test_resolve_provider_supports_gemini(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+
+    base_url, api_key = resolve_provider("gemini")
+
+    assert base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert api_key == "test-gemini-key"
+
+
+def test_resolve_provider_gemini_does_not_use_groq_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+
+    _, api_key = resolve_provider("gemini")
+
+    assert api_key == "test-gemini-key"
+
+
 def test_resolve_provider_rejects_unknown_provider() -> None:
     with pytest.raises(ValueError, match="Unknown LLM provider"):
         resolve_provider("unknown")
+
+
+def test_reviewer_limits_gemini_match_cloud_budget() -> None:
+    budget, delay = reviewer_limits("gemini")
+
+    assert budget == 1_500
+    assert delay == 1.0

@@ -102,7 +102,7 @@ separadores:
 ```bash
 uv run python scripts/run_experiment_matrix.py \
   --notebooks notebooks/junior_regression.ipynb notebooks/senior_regression.ipynb \
-  --models ollama=gemma4:e2b groq=openai/gpt-oss-20b \
+  --models ollama=gemma4:e2b groq=openai/gpt-oss-20b gemini=gemini-2.5-flash \
   --repetitions 1 \
   --llm-timeout 300 \
   --llm-retries 3 \
@@ -114,9 +114,10 @@ arquivos sob `tests/fixtures/` e notebooks que não imprimem `final_mse`,
 antes de qualquer chamada de LLM. A fixture `simple_regression.ipynb` continua
 válida para testes do parser, PASSO 0 e T-8; não é insumo da matriz.
 
-O provedor Groq usa `GROQ_API_KEY` do ambiente. A chave nunca é gravada no
-CSV, nos logs ou no nome da pasta de execução. Erros persistentes, como
-limites `429`, são registrados com o motivo sanitizado.
+Groq usa `GROQ_API_KEY`, OpenRouter usa `OPENROUTER_API_KEY` e Gemini usa
+`GEMINI_API_KEY`. A chave nunca é gravada no CSV, nos logs ou no nome da
+pasta de execução. Erros persistentes, como limites `429`, são registrados
+com o motivo sanitizado.
 
 ## Testes e qualidade
 

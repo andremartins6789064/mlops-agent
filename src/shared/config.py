@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     llm_model: str = "smollm2:1.7b"
     groq_api_key: str | None = None
     openrouter_api_key: str | None = None
+    gemini_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -47,6 +48,19 @@ PROVIDERS = {
         reviewer_context_budget_tokens=1_500,
         reviewer_inter_call_delay_seconds=1.0,
     ),
+    "gemini": ProviderConfig(
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key_env="GEMINI_API_KEY",
+        reviewer_context_budget_tokens=1_500,
+        reviewer_inter_call_delay_seconds=1.0,
+    ),
+}
+
+_SETTINGS_API_KEY_ATTR = {
+    "ollama": "llm_api_key",
+    "groq": "groq_api_key",
+    "openrouter": "openrouter_api_key",
+    "gemini": "gemini_api_key",
 }
 
 
@@ -63,14 +77,11 @@ def resolve_provider(provider: str) -> tuple[str, str]:
         )
 
     base_url = config.base_url
-    api_key = settings.llm_api_key if provider == "ollama" else None
     if provider == "ollama":
-        base_url = settings.llm_base_url or base_url
-    else:
-        api_key = settings.groq_api_key
+        base_url = os.getenv("LLM_BASE_URL") or settings.llm_base_url or base_url
 
-    base_url = os.getenv("LLM_BASE_URL", base_url) if provider == "ollama" else base_url
-    api_key = os.getenv(config.api_key_env) or api_key
+    settings_key = getattr(settings, _SETTINGS_API_KEY_ATTR[provider], None)
+    api_key = os.getenv(config.api_key_env) or settings_key
     if not api_key:
         raise ValueError(
             f"Missing API key for provider '{provider}' (set {config.api_key_env})"
