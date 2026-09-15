@@ -37,6 +37,16 @@ def test_normalize_package_names_skips_generated_modules() -> None:
     assert normalize_package_names(["training", "numpy", "main"]) == ["numpy"]
 
 
+def test_normalize_package_names_skips_stdlib_modules() -> None:
+    assert normalize_package_names(
+        ["random", "os", "sys", "pathlib", "json", "sklearn"]
+    ) == ["scikit-learn"]
+
+
+def test_normalize_package_names_only_stdlib_yields_empty() -> None:
+    assert normalize_package_names(["random", "math", "pickle"]) == []
+
+
 def test_render_functions_declare_the_same_packages() -> None:
     libraries = ["sklearn", "numpy", "pandas"]
     requirements = render_requirements(libraries).splitlines()
@@ -44,6 +54,16 @@ def test_render_functions_declare_the_same_packages() -> None:
 
     assert requirements == ["numpy", "pandas", "scikit-learn"]
     assert parsed["project"]["dependencies"] == requirements
+
+
+def test_render_functions_omit_stdlib_from_packaging() -> None:
+    libraries = ["random", "os"]
+    parsed = tomllib.loads(
+        render_pyproject(project_name="junior_regression", libraries=libraries)
+    )
+
+    assert render_requirements(libraries) == ""
+    assert parsed["project"]["dependencies"] == []
 
 
 def test_write_project_metadata_keeps_requirements_and_pyproject_aligned(
@@ -62,6 +82,18 @@ def test_write_project_metadata_keeps_requirements_and_pyproject_aligned(
         parse_project_name((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
         == "simple_regression"
     )
+
+
+def test_write_project_metadata_drops_stdlib(tmp_path: Path) -> None:
+    write_project_metadata(
+        tmp_path,
+        project_name="junior_regression",
+        libraries=["random", "sklearn"],
+    )
+    requirements, pyproject_deps = _declared_packages(tmp_path)
+
+    assert requirements == ["scikit-learn"]
+    assert pyproject_deps == requirements
 
 
 def test_detect_project_libraries_reads_sklearn_from_generated_source(
@@ -90,6 +122,23 @@ def test_detect_project_libraries_reads_existing_packaging_files(
     )
 
     assert detect_project_libraries(tmp_path) == ["pandas", "scikit-learn"]
+
+
+def test_detect_project_libraries_ignores_stdlib_in_source_and_requirements(
+    tmp_path: Path,
+) -> None:
+    src_root = tmp_path / "src"
+    src_root.mkdir()
+    (src_root / "feature_engineering.py").write_text(
+        "import random\n"
+        "\n"
+        "def load_data() -> list[float]:\n"
+        "    return [random.random()]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text("random\nnumpy\n", encoding="utf-8")
+
+    assert detect_project_libraries(tmp_path) == ["numpy"]
 
 
 def test_parse_project_name_ignores_malformed_lines() -> None:

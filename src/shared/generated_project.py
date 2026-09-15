@@ -6,7 +6,7 @@ import tomllib
 from collections.abc import Iterable
 from pathlib import Path
 
-from src.shared.python_source import extract_imported_libraries
+from src.shared.python_source import STDLIB_MODULES, extract_imported_libraries
 
 PACKAGE_NAME_ALIASES = {
     "sklearn": "scikit-learn",
@@ -24,11 +24,16 @@ _GENERATED_MODULE_NAMES = frozenset(
 
 
 def normalize_package_names(libraries: Iterable[str]) -> list[str]:
-    """Map import names to installable packages, sorted and unique."""
+    """Map import names to installable packages, sorted and unique.
+
+    Generated stage modules and Python stdlib names are omitted so the
+    artifact never asks an isolated installer for packages that are not
+    on PyPI (for example ``random`` from the junior notebook).
+    """
     packages: set[str] = set()
     for library in libraries:
         name = library.strip()
-        if not name or name in _GENERATED_MODULE_NAMES:
+        if not name or name in _GENERATED_MODULE_NAMES or name in STDLIB_MODULES:
             continue
         packages.add(PACKAGE_NAME_ALIASES.get(name, name))
     return sorted(packages)
