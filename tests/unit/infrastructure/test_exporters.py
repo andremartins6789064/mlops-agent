@@ -82,6 +82,23 @@ def test_file_system_writer_creates_expected_artifacts(tmp_path: Path) -> None:
     assert pyproject["project"]["dependencies"] == ["numpy", "pandas", "scikit-learn"]
 
 
+def test_file_system_writer_omits_stdlib_from_packaging(tmp_path: Path) -> None:
+    writer = FileSystemOutputWriter()
+    root = tmp_path / "project"
+    writer.write_requirements(
+        project_root=str(root), libraries=["random", "sklearn", "os"]
+    )
+    writer.write_pyproject(
+        project_root=str(root),
+        project_name="junior_regression",
+        libraries=["random", "sklearn", "os"],
+    )
+
+    assert (root / "requirements.txt").read_text(encoding="utf-8") == "scikit-learn\n"
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert pyproject["project"]["dependencies"] == ["scikit-learn"]
+
+
 def test_file_system_writer_creates_executable_entrypoint(tmp_path: Path) -> None:
     writer = FileSystemOutputWriter()
     root = tmp_path / "project"

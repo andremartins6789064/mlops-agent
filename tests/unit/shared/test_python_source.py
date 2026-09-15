@@ -34,6 +34,14 @@ def test_extract_imported_libraries_ignores_invalid_source() -> None:
     assert extract_imported_libraries("return X = value") == set()
 
 
+def test_extract_imported_libraries_ignores_stdlib() -> None:
+    source = (
+        "import random\nimport os.path\nfrom math import sqrt\nimport numpy as np\n"
+    )
+
+    assert extract_imported_libraries(source) == {"numpy"}
+
+
 def test_generated_test_matches_module_rejects_unknown_import() -> None:
     test_source = "from eva import eval_model\n\ndef test_eval() -> None:\n    pass\n"
     module_source = (

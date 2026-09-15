@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import sys
 
-_STDLIB_MODULES = set(sys.stdlib_module_names) | {"__future__"}
+STDLIB_MODULES = frozenset(sys.stdlib_module_names) | frozenset({"__future__"})
 
 GENERATED_TEST_SRC_BOOTSTRAP = (
     "sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))"
@@ -35,7 +35,7 @@ def extract_imported_libraries(source: str) -> set[str]:
             libraries.update(alias.name.split(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             libraries.add(node.module.split(".")[0])
-    return libraries - _STDLIB_MODULES
+    return libraries - STDLIB_MODULES
 
 
 def generated_test_matches_module(
@@ -52,7 +52,7 @@ def generated_test_matches_module(
         return False
 
     module_libraries = extract_imported_libraries(module_source)
-    allowed_imports = _STDLIB_MODULES | module_libraries | {"pytest", stage_name}
+    allowed_imports = STDLIB_MODULES | module_libraries | {"pytest", stage_name}
     module_names = {
         node.name
         for node in module_tree.body
