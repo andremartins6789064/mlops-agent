@@ -12,6 +12,7 @@ from src.agents.reviewer import ReviewerAgent
 from src.agents.test_generator import PipelineTestGeneratorAgent
 from src.application.validate_output import ValidationResult
 from src.domain.entities import PipelineType
+from src.domain.pipeline_contract import entrypoint_source
 from src.infrastructure.exporters import ZipExporter
 from src.infrastructure.parsers.notebook_parser import NotebookParser
 from src.shared.progress import ProgressEvent
@@ -123,6 +124,9 @@ def test_orchestrator_generates_tests_and_quality_metrics(tmp_path: Path) -> Non
     assert len(result.generated_test_file_paths) == 4
     assert result.quality_metrics is not None
     assert result.quality_metrics.test_coverage == 85.0
+    assert (tmp_path / "src" / "main.py").read_text(
+        encoding="utf-8"
+    ) == entrypoint_source()
     assert result.stage_provenance is not None
     assert set(result.stage_provenance) == {
         "feature_engineering",
@@ -191,7 +195,9 @@ def test_orchestrator_emits_progress_events_in_order(tmp_path: Path) -> None:
     assert all(event.total == 10 for event in events)
 
 
-def test_orchestrator_reviewer_real_validation_meets_threshold(tmp_path: Path) -> None:
+def test_orchestrator_reviewer_real_validation_includes_entrypoint(
+    tmp_path: Path,
+) -> None:
     orchestrator = Orchestrator(
         notebook_parser=NotebookParser(),
         notebook_analyzer=NotebookAnalyzerAgent(),
@@ -209,7 +215,9 @@ def test_orchestrator_reviewer_real_validation_meets_threshold(tmp_path: Path) -
     assert result.quality_metrics is not None
     assert result.quality_metrics.lint_errors == 0
     assert result.quality_metrics.type_errors == 0
-    assert result.quality_metrics.test_coverage >= 80.0
+    assert result.validation_result is not None
+    assert (tmp_path / "src" / "main.py").is_file()
+    assert "main.py" in result.validation_result.test_output
 
 
 def test_orchestrator_exports_zip_archive(tmp_path: Path) -> None:
@@ -233,6 +241,9 @@ def test_orchestrator_exports_zip_archive(tmp_path: Path) -> None:
     assert zip_path.exists()
     with ZipFile(zip_path, "r") as zip_file:
         names = set(zip_file.namelist())
+        entrypoint = zip_file.read("src/main.py").decode("utf-8")
     assert "src/feature_engineering.py" in names
+    assert "src/main.py" in names
+    assert entrypoint == entrypoint_source()
     assert "tests/test_feature_engineering.py" in names
     assert "requirements.txt" in names

@@ -9,6 +9,7 @@ from typing import Any
 
 from src.application.validate_output import ValidationResult, validate_output
 from src.domain.interfaces import ILLMClient
+from src.domain.pipeline_contract import entrypoint_source
 from src.domain.value_objects import QualityMetrics
 from src.shared.llm_parsing import parse_json_object, parse_python_block
 
@@ -87,6 +88,7 @@ class ReviewerAgent:
         if active_fixer is None and self._llm_client is not None:
             active_fixer = self._fix_with_llm
 
+        self._write_entrypoint(project_dir=str(project_path))
         validation = self._validator(str(project_path))
 
         while (
@@ -117,6 +119,12 @@ class ReviewerAgent:
             review_incomplete=self._last_review_incomplete,
             review_error=self._last_review_error,
         )
+
+    def _write_entrypoint(self, *, project_dir: str) -> None:
+        """Write `src/main.py` before validation so coverage matches the ZIP."""
+        root = Path(project_dir) / "src"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "main.py").write_text(entrypoint_source(), encoding="utf-8")
 
     def _write_modules(
         self, *, project_dir: str, generated_modules: dict[str, str]

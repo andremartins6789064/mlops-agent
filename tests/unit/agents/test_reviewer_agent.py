@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from src.agents.reviewer import ReviewerAgent
 from src.application.validate_output import ValidationResult
 from src.domain.interfaces import ILLMClient
+from src.domain.pipeline_contract import entrypoint_source
 
 
 class _StubLLMClient(ILLMClient):
@@ -19,7 +21,7 @@ class _StubLLMClient(ILLMClient):
         return self._response
 
 
-def test_reviewer_stops_when_validation_is_clean() -> None:
+def test_reviewer_stops_when_validation_is_clean(tmp_path: Any) -> None:
     def _validator(project_dir: str) -> ValidationResult:
         return ValidationResult(
             lint_errors=0,
@@ -35,13 +37,48 @@ def test_reviewer_stops_when_validation_is_clean() -> None:
 
     reviewer = ReviewerAgent(validator=_validator, max_iterations=2)
     result = reviewer.review(
-        project_dir=".",
+        project_dir=str(tmp_path),
         generated_modules={"training": "def train_model() -> None:\n    return None\n"},
         generated_tests={"training": "def test_training() -> None:\n    assert True\n"},
     )
 
     assert result.iterations == 0
     assert result.quality_metrics.test_coverage == 91.0
+
+
+def test_reviewer_writes_entrypoint_before_validation(tmp_path: Any) -> None:
+    seen_before_validation: dict[str, object] = {}
+
+    def _validator(project_dir: str) -> ValidationResult:
+        entrypoint = Path(project_dir) / "src" / "main.py"
+        seen_before_validation["exists"] = entrypoint.is_file()
+        seen_before_validation["source"] = (
+            entrypoint.read_text(encoding="utf-8") if entrypoint.is_file() else ""
+        )
+        return ValidationResult(
+            lint_errors=0,
+            type_errors=0,
+            test_coverage=91.0,
+            lint_output="",
+            type_output="",
+            test_output="",
+            lint_exit_code=0,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    reviewer = ReviewerAgent(validator=_validator)
+    reviewer.review(
+        project_dir=str(tmp_path),
+        generated_modules={"training": "def train_model() -> None:\n    return None\n"},
+        generated_tests={"training": "def test_training() -> None:\n    assert True\n"},
+    )
+
+    assert seen_before_validation["exists"] is True
+    assert seen_before_validation["source"] == entrypoint_source()
+    assert (tmp_path / "src" / "main.py").read_text(
+        encoding="utf-8"
+    ) == entrypoint_source()
 
 
 def test_reviewer_runs_fixer_until_validation_passes(tmp_path: Any) -> None:

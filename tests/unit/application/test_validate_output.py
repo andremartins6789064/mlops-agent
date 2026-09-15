@@ -123,3 +123,39 @@ def test_validate_output_rewrites_legacy_pyproject_without_dependencies(
     assert pyproject["project"]["name"] == "legacy-artifact"
     assert pyproject["project"]["dependencies"] == ["scikit-learn"]
     assert requirements.splitlines() == ["scikit-learn"]
+
+
+def test_validate_output_coverage_command_includes_src_entrypoint(
+    monkeypatch: Any, tmp_path: Any
+) -> None:
+    src_root = tmp_path / "src"
+    src_root.mkdir()
+    (src_root / "main.py").write_text(
+        "def run_pipeline() -> float:\n    return 0.0\n",
+        encoding="utf-8",
+    )
+    outputs = [
+        SimpleNamespace(stdout="", stderr="", returncode=0),
+        SimpleNamespace(stdout="", stderr="", returncode=0),
+        SimpleNamespace(
+            stdout=(
+                "src/main.py     39      0   100%\nTOTAL           39      0   100%\n"
+            ),
+            stderr="",
+            returncode=0,
+        ),
+    ]
+    commands: list[list[str]] = []
+
+    def _fake_run(*args: Any, **kwargs: Any) -> Any:
+        commands.append(args[0])
+        assert (tmp_path / "src" / "main.py").is_file()
+        return outputs.pop(0)
+
+    monkeypatch.setattr(validate_module.subprocess, "run", _fake_run)
+
+    result = validate_module.validate_output(str(tmp_path))
+
+    pytest_command = next(command for command in commands if "pytest" in command)
+    assert "--cov=src" in pytest_command
+    assert result.test_coverage == 100.0
