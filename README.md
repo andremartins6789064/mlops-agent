@@ -119,7 +119,7 @@ separadores:
 ```bash
 uv run python scripts/run_experiment_matrix.py \
   --notebooks notebooks/junior_regression.ipynb notebooks/senior_regression.ipynb \
-  --models ollama=gemma4:e2b groq=openai/gpt-oss-20b gemini=gemini-2.5-flash \
+  --models ollama=gemma4:e2b groq=openai/gpt-oss-20b gemini=gemini-3.1-flash-lite \
   --repetitions 1 \
   --llm-timeout 300 \
   --llm-retries 3 \
@@ -135,6 +135,12 @@ Groq usa `GROQ_API_KEY`, OpenRouter usa `OPENROUTER_API_KEY` e Gemini usa
 `GEMINI_API_KEY`. A chave nunca é gravada no CSV, nos logs ou no nome da
 pasta de execução. Erros persistentes, como limites `429`, são registrados
 com o motivo sanitizado.
+
+Confirme o ID do modelo Gemini na API antes de gastar uma matriz: em
+2026-09-15 `gemini-2.5-flash` devolveu 404 para contas novas, `gemini-3.6-flash`
+caiu em 503 de demanda, e a conversão do notebook júnior concluiu com
+`gemini-3.1-flash-lite`. Não use o alias `gemini-flash-latest` no experimento
+— o ID precisa ser estável para a evidência ser reproduzível.
 
 ## Testes e qualidade
 
