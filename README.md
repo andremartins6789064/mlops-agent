@@ -77,6 +77,23 @@ LLM_MODEL=gpt-4o-mini
 uv run streamlit run src/ui/app.py
 ```
 
+## Docker
+
+Imagem da UI para uso interno (sem Ollama e sem chave gravada). URL, API key e modelo continuam na página Configuração. O Reviewer baixa ruff/mypy/pytest com `uv` na hora, então o container precisa de rede de saída.
+
+```bash
+docker build -t mlops-agent .
+docker run --rm -p 8501:8501 mlops-agent
+```
+
+A interface fica em `http://localhost:8501`. Na nuvem, troque o default `http://localhost:11434/v1` por um provedor OpenAI-compatível (Groq, Gemini, OpenRouter, etc.).
+
+Se o plugin Compose estiver instalado (`docker compose version`):
+
+```bash
+docker compose up --build
+```
+
 Fluxo na UI:
 
 1. `Configuração`: selecionar provedor/modelo e enviar notebook;
