@@ -186,6 +186,7 @@ class Orchestrator:
                 generated_modules=generated_modules,
                 generated_tests=generated_tests,
             )
+            generated_modules = review_result.generated_modules
             quality_metrics = review_result.quality_metrics
             review_incomplete = review_result.review_incomplete
             review_error = review_result.review_error
