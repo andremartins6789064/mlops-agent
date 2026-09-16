@@ -143,7 +143,7 @@ def test_reviewer_uses_llm_fixer_when_no_manual_fixer(tmp_path: Any) -> None:
                 lint_errors=1,
                 type_errors=0,
                 test_coverage=90.0,
-                lint_output="E501",
+                lint_output="src/training.py:1:1: E501",
                 type_output="",
                 test_output="",
                 lint_exit_code=1,
@@ -186,7 +186,7 @@ def test_reviewer_bounds_context_and_limits_calls(
             lint_errors=1,
             type_errors=0,
             test_coverage=90.0,
-            lint_output="E501",
+            lint_output="src/training.py:1:1: E501",
             type_output="",
             test_output="",
             lint_exit_code=1,
@@ -220,7 +220,7 @@ def test_reviewer_marks_unprocessed_stages_inconclusive(tmp_path: Any) -> None:
             lint_errors=1,
             type_errors=0,
             test_coverage=90.0,
-            lint_output="E501",
+            lint_output=("src/training.py:1:1: E501\nsrc/evaluation.py:1:1: E501"),
             type_output="",
             test_output="",
             lint_exit_code=1,
@@ -258,7 +258,7 @@ def test_reviewer_marks_invalid_partial_response_incomplete(tmp_path: Any) -> No
             lint_errors=1,
             type_errors=0,
             test_coverage=90.0,
-            lint_output="E501",
+            lint_output="src/training.py:1:1: E501",
             type_output="",
             test_output="",
             lint_exit_code=1,
@@ -361,3 +361,93 @@ def test_reviewer_ignores_coverage_table_when_selecting_stages(
     assert (tmp_path / "src" / "training.py").read_text(
         encoding="utf-8"
     ) == result.generated_modules["training"]
+
+
+_FOUR_STAGES = {
+    "feature_engineering": "def load_data() -> None:\n    return None\n",
+    "training": "def train_model() -> None:\n    return None\n",
+    "inference": "def predict() -> None:\n    return None\n",
+    "evaluation": "def evaluate_model() -> None:\n    return None\n",
+}
+
+
+def test_reviewer_skips_llm_when_only_coverage_is_low(tmp_path: Any) -> None:
+    llm = _StubLLMClient(
+        '{"module_code":"def train_model() -> None:\\n    print(\\"fixed\\")\\n"}'
+    )
+
+    def _validator(project_dir: str) -> ValidationResult:
+        return ValidationResult(
+            lint_errors=0,
+            type_errors=0,
+            test_coverage=54.0,
+            lint_output="",
+            type_output="",
+            test_output="16 passed\n" + _COVERAGE_TABLE,
+            lint_exit_code=0,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    reviewer = ReviewerAgent(
+        validator=_validator,
+        llm_client=llm,
+        max_llm_calls=1,
+    )
+    result = reviewer.review(
+        project_dir=str(tmp_path),
+        generated_modules=dict(_FOUR_STAGES),
+        generated_tests={
+            name: f"def test_{name}() -> None:\n    assert True\n"
+            for name in _FOUR_STAGES
+        },
+    )
+
+    assert llm.calls == 0
+    assert result.iterations == 0
+    assert result.review_incomplete is False
+    assert result.review_error is None
+    assert result.quality_metrics.test_coverage == 54.0
+    assert result.generated_modules == _FOUR_STAGES
+
+
+def test_reviewer_call_budget_exceeded_keeps_budget_message(
+    tmp_path: Any,
+) -> None:
+    llm = _StubLLMClient(
+        '{"module_code":"def train_model() -> None:\\n    return None\\n"}'
+    )
+
+    def _validator(project_dir: str) -> ValidationResult:
+        return ValidationResult(
+            lint_errors=2,
+            type_errors=0,
+            test_coverage=90.0,
+            lint_output=("src/training.py:1:1: E501\nsrc/evaluation.py:1:1: E501"),
+            type_output="",
+            test_output="",
+            lint_exit_code=1,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    reviewer = ReviewerAgent(
+        validator=_validator,
+        llm_client=llm,
+        max_llm_calls=1,
+    )
+    result = reviewer.review(
+        project_dir=str(tmp_path),
+        generated_modules={
+            "training": "def train_model() -> None:\n    pass\n",
+            "evaluation": "def evaluate() -> None:\n    pass\n",
+        },
+        generated_tests={
+            "training": "def test_training() -> None:\n    assert True\n",
+            "evaluation": "def test_evaluation() -> None:\n    assert True\n",
+        },
+    )
+
+    assert llm.calls == 1
+    assert result.review_incomplete is True
+    assert result.review_error == "Reviewer call budget exceeded"
