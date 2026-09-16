@@ -91,12 +91,17 @@ class ReviewerAgent:
 
         self._write_entrypoint(project_dir=str(project_path))
         validation = self._validator(str(project_path))
+        used_llm_fixer = fixer is None and self._llm_client is not None
 
         while (
             validation.has_errors
             and active_fixer is not None
             and iterations < self._max_iterations
         ):
+            if used_llm_fixer and not self._affected_stages(
+                current_modules, validation
+            ):
+                break
             iterations += 1
             current_modules = active_fixer(current_modules, validation)
             self._write_modules(
@@ -227,7 +232,11 @@ class ReviewerAgent:
     def _affected_stages(
         self, modules: dict[str, str], validation: ValidationResult
     ) -> list[str]:
-        """Select stages named in errors, or all when attribution is unknown."""
+        """Select stages named in lint, type, or test errors.
+
+        Coverage tables are ignored. If nothing is named, return no stages so
+        low coverage alone does not trigger LLM correction of every module.
+        """
         diagnostics = " ".join(
             (
                 validation.lint_output,
@@ -235,12 +244,11 @@ class ReviewerAgent:
                 _without_coverage_report(validation.test_output),
             )
         ).lower()
-        affected = [
+        return [
             stage
             for stage in modules
             if _stage_named_in_diagnostics(stage, diagnostics)
         ]
-        return affected or list(modules)
 
     def _check_budget(self) -> None:
         """Stop optional review work when its time budget is exhausted."""
