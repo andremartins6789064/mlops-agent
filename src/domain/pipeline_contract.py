@@ -40,7 +40,7 @@ REQUIRED_FUNCTIONS: tuple[FunctionContract, ...] = (
         module="feature_engineering",
         name="split_data",
         required_args=("features", "labels"),
-        returns="tuple[train_features, test_features, train_labels, test_labels]",
+        returns="sequence[train_features, test_features, train_labels, test_labels]",
     ),
     FunctionContract(
         module="training",
@@ -111,7 +111,7 @@ _ENTRYPOINT_TEMPLATE = '''"""Executable entrypoint for the generated ML pipeline
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import evaluation
 import feature_engineering
@@ -143,7 +143,11 @@ def run_pipeline() -> float:
             features = prepared
 
     split = feature_engineering.split_data(features, labels)
-    if not isinstance(split, tuple) or len(split) != 4:
+    if (
+        isinstance(split, (str, bytes))
+        or not isinstance(split, Sequence)
+        or len(split) != 4
+    ):
         raise RuntimeError("split_data must return four values")
     train_features, test_features, train_labels, test_labels = split
 
