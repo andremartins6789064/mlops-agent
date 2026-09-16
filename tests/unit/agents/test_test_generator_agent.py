@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from src.agents.test_generator import PipelineTestGeneratorAgent
@@ -149,3 +151,65 @@ def test_test_generator_writes_tests_to_disk(tmp_path: Path) -> None:
     )
 
     assert Path(file_map["training"]).exists()
+
+
+def test_training_template_uses_2d_features_and_allows_none_save_return() -> None:
+    generator = PipelineTestGeneratorAgent()
+    tests = generator.generate_tests(
+        generated_modules={"training": "def train_model() -> None:\n    return None\n"}
+    )
+    training_test = tests["training"]
+
+    assert "train_model([1], [1])" not in training_test
+    assert "features = [[1.0], [2.0]]" in training_test
+    assert "labels = [1.0, 2.0]" in training_test
+    assert "saved is None" in training_test
+    assert GENERATED_TEST_SRC_BOOTSTRAP in training_test
+
+
+def test_training_template_passes_against_linear_regression_like_fit(
+    tmp_path: Path,
+) -> None:
+    src_root = tmp_path / "src"
+    tests_root = tmp_path / "tests"
+    src_root.mkdir()
+    tests_root.mkdir()
+    (src_root / "training.py").write_text(
+        "from pathlib import Path\n"
+        "from typing import Any\n\n"
+        "def train_model(train_features: Any, train_labels: Any) -> dict[str, int]:\n"
+        "    first = train_features[0]\n"
+        "    if not hasattr(first, '__len__') or isinstance(first, (str, bytes)):\n"
+        "        raise ValueError('Expected 2D array, got 1D array instead')\n"
+        "    return {'coef': 1}\n\n"
+        "def save_model(model: object, path: str) -> None:\n"
+        "    Path(path).write_text('ok', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    generator = PipelineTestGeneratorAgent()
+    generated = generator.generate_tests(
+        generated_modules={
+            "training": (src_root / "training.py").read_text(encoding="utf-8")
+        }
+    )
+    (tests_root / "test_training.py").write_text(
+        generated["training"], encoding="utf-8"
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(tests_root / "test_training.py"),
+            "-q",
+            "-o",
+            "addopts=",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr

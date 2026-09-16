@@ -140,13 +140,16 @@ class PipelineTestGeneratorAgent:
             "import training as stage_module\n\n\n"
             "def test_training_train_and_save_model(tmp_path: Path) -> None:\n"
             '    """Exercise training functions and serialization."""\n'
-            "    model = {'ok': True}\n"
+            "    features = [[1.0], [2.0]]\n"
+            "    labels = [1.0, 2.0]\n"
+            "    model: object | None = None\n"
             "    if hasattr(stage_module, 'train_model'):\n"
-            "        model = stage_module.train_model([1], [1])\n"
+            "        model = stage_module.train_model(features, labels)\n"
             "    if hasattr(stage_module, 'save_model'):\n"
             "        model_path = tmp_path / 'model.pkl'\n"
-            "        saved_path = stage_module.save_model(model, str(model_path))\n"
-            "        assert Path(saved_path).exists()\n"
+            "        saved = stage_module.save_model(model, str(model_path))\n"
+            "        persisted = model_path if saved is None else Path(saved)\n"
+            "        assert persisted.exists()\n"
         )
 
     def _inference_tests(self) -> str:
