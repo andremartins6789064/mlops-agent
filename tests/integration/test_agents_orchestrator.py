@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from zipfile import ZipFile
 
 from src.agents.architecture_agent import ArchitectureAgent
@@ -11,11 +12,13 @@ from src.agents.orchestrator import Orchestrator
 from src.agents.reviewer import ReviewerAgent
 from src.agents.test_generator import PipelineTestGeneratorAgent
 from src.application.validate_output import ValidationResult
-from src.domain.entities import PipelineType
+from src.domain.entities import Notebook, PipelineType
+from src.domain.interfaces import ILLMClient
 from src.domain.pipeline_contract import entrypoint_source
 from src.infrastructure.exporters import ZipExporter
 from src.infrastructure.parsers.notebook_parser import NotebookParser
-from src.shared.progress import ProgressEvent
+from src.shared.progress import ProgressCallback, ProgressEvent
+from src.shared.provenance import StageProvenance
 
 
 def test_orchestrator_returns_valid_analysis_and_plan() -> None:
@@ -247,3 +250,105 @@ def test_orchestrator_exports_zip_archive(tmp_path: Path) -> None:
     assert entrypoint == entrypoint_source()
     assert "tests/test_feature_engineering.py" in names
     assert "requirements.txt" in names
+
+
+class _StubLLMClient(ILLMClient):
+    def __init__(self, response: str) -> None:
+        self._response = response
+        self.calls = 0
+
+    def generate(self, prompt: str, *, system_prompt: str | None = None) -> str:
+        self.calls += 1
+        return self._response
+
+
+class _FixedModuleGenerator(CodeGeneratorAgent):
+    """Return a known original module set without calling an LLM."""
+
+    def generate_modules(
+        self,
+        *,
+        notebook: Notebook,
+        notebook_analysis: dict[str, Any],
+        architecture_plan: dict[str, Any],
+        progress_callback: ProgressCallback | None = None,
+    ) -> dict[str, str]:
+        source = "def train_model() -> None:\n    return None\n"
+        modules = {
+            "feature_engineering": source,
+            "training": source,
+            "inference": source,
+            "evaluation": source,
+        }
+        self._stage_provenance = {
+            name: StageProvenance(origin="template") for name in modules
+        }
+        return modules
+
+
+class _FixedTestGenerator(PipelineTestGeneratorAgent):
+    """Return a trivial test per stage without calling an LLM."""
+
+    def generate_tests(self, *, generated_modules: dict[str, str]) -> dict[str, str]:
+        return {
+            name: "def test_ok() -> None:\n    assert True\n"
+            for name in generated_modules
+        }
+
+
+def test_orchestrator_exports_modules_returned_by_reviewer(tmp_path: Path) -> None:
+    fixed = 'def train_model() -> None:\n    print("reviewed")\n    return None\n'
+    calls = {"count": 0}
+
+    def _validator(project_dir: str) -> ValidationResult:
+        if calls["count"] == 0:
+            calls["count"] += 1
+            return ValidationResult(
+                lint_errors=0,
+                type_errors=0,
+                test_coverage=51.0,
+                lint_output="",
+                type_output="",
+                test_output="FAILED tests/test_training.py::test_ok - assert 0\n",
+                lint_exit_code=0,
+                type_exit_code=0,
+                test_exit_code=1,
+            )
+        return ValidationResult(
+            lint_errors=0,
+            type_errors=0,
+            test_coverage=54.0,
+            lint_output="",
+            type_output="",
+            test_output="",
+            lint_exit_code=0,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    orchestrator = Orchestrator(
+        notebook_parser=NotebookParser(),
+        notebook_analyzer=NotebookAnalyzerAgent(),
+        architecture_agent=ArchitectureAgent(),
+        code_generator=_FixedModuleGenerator(),
+        test_generator=_FixedTestGenerator(),
+        reviewer=ReviewerAgent(
+            validator=_validator,
+            llm_client=_StubLLMClient('{"module_code":' + json.dumps(fixed) + "}"),
+            max_llm_calls=1,
+        ),
+        exporter=ZipExporter(),
+    )
+
+    result = orchestrator.run(
+        "tests/fixtures/simple_regression.ipynb",
+        output_dir=str(tmp_path),
+    )
+
+    assert result.generated_modules is not None
+    assert 'print("reviewed")' in result.generated_modules["training"]
+    assert result.exported_zip_path is not None
+    with ZipFile(result.exported_zip_path, "r") as zip_file:
+        training = zip_file.read("src/training.py").decode("utf-8")
+    assert training == result.generated_modules["training"]
+    assert 'print("reviewed")' in training

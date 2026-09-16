@@ -44,6 +44,9 @@ def test_reviewer_stops_when_validation_is_clean(tmp_path: Any) -> None:
 
     assert result.iterations == 0
     assert result.quality_metrics.test_coverage == 91.0
+    assert result.generated_modules == {
+        "training": "def train_model() -> None:\n    return None\n"
+    }
 
 
 def test_reviewer_writes_entrypoint_before_validation(tmp_path: Any) -> None:
@@ -168,6 +171,7 @@ def test_reviewer_uses_llm_fixer_when_no_manual_fixer(tmp_path: Any) -> None:
 
     assert llm.calls >= 1
     assert result.iterations == 1
+    assert "def train_model" in result.generated_modules["training"]
 
 
 def test_reviewer_bounds_context_and_limits_calls(
@@ -243,6 +247,7 @@ def test_reviewer_marks_unprocessed_stages_inconclusive(tmp_path: Any) -> None:
 
     assert llm.calls == 1
     assert result.review_incomplete is True
+    assert result.review_error == "Reviewer call budget exceeded"
 
 
 def test_reviewer_marks_invalid_partial_response_incomplete(tmp_path: Any) -> None:
@@ -274,3 +279,85 @@ def test_reviewer_marks_invalid_partial_response_incomplete(tmp_path: Any) -> No
 
     assert result.review_incomplete is True
     assert result.review_error is not None
+
+
+_COVERAGE_TABLE = """
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.15-final-0 _______________
+Name                         Stmts   Miss  Cover
+src/evaluation.py                9      0   100%
+src/feature_engineering.py      20      0   100%
+src/inference.py                 6      0   100%
+src/main.py                     39     39     0%
+src/training.py                 10      0   100%
+TOTAL                           84     39    54%
+"""
+
+
+def test_reviewer_ignores_coverage_table_when_selecting_stages(
+    tmp_path: Any,
+) -> None:
+    llm = _StubLLMClient(
+        '{"module_code":"def train_model() -> None:\\n    print(\\"fixed\\")\\n"}'
+    )
+    calls = {"count": 0}
+
+    def _validator(project_dir: str) -> ValidationResult:
+        if calls["count"] == 0:
+            calls["count"] += 1
+            return ValidationResult(
+                lint_errors=0,
+                type_errors=0,
+                test_coverage=51.0,
+                lint_output="",
+                type_output="",
+                test_output=(
+                    "FAILED tests/test_training.py::test_train_model - "
+                    "assert 0\n" + _COVERAGE_TABLE
+                ),
+                lint_exit_code=0,
+                type_exit_code=0,
+                test_exit_code=1,
+            )
+        return ValidationResult(
+            lint_errors=0,
+            type_errors=0,
+            test_coverage=54.0,
+            lint_output="",
+            type_output="",
+            test_output="",
+            lint_exit_code=0,
+            type_exit_code=0,
+            test_exit_code=0,
+        )
+
+    original = "def train_model() -> None:\n    pass\n"
+    reviewer = ReviewerAgent(
+        validator=_validator,
+        llm_client=llm,
+        max_llm_calls=1,
+    )
+    result = reviewer.review(
+        project_dir=str(tmp_path),
+        generated_modules={
+            "feature_engineering": original,
+            "training": original,
+            "inference": original,
+            "evaluation": original,
+        },
+        generated_tests={
+            "feature_engineering": "def test_fe() -> None:\n    assert True\n",
+            "training": "def test_training() -> None:\n    assert True\n",
+            "inference": "def test_inference() -> None:\n    assert True\n",
+            "evaluation": "def test_evaluation() -> None:\n    assert True\n",
+        },
+    )
+
+    assert llm.calls == 1
+    assert result.review_incomplete is False
+    assert result.review_error is None
+    assert 'print("fixed")' in result.generated_modules["training"]
+    assert result.generated_modules["feature_engineering"] == original
+    assert (tmp_path / "src" / "training.py").read_text(
+        encoding="utf-8"
+    ) == result.generated_modules["training"]

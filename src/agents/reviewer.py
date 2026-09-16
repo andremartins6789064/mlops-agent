@@ -21,6 +21,7 @@ class ReviewerResult:
     validation_result: ValidationResult
     quality_metrics: QualityMetrics
     iterations: int
+    generated_modules: dict[str, str]
     review_incomplete: bool = False
     review_error: str | None = None
 
@@ -116,6 +117,7 @@ class ReviewerAgent:
             validation_result=validation,
             quality_metrics=quality,
             iterations=iterations,
+            generated_modules=current_modules,
             review_incomplete=self._last_review_incomplete,
             review_error=self._last_review_error,
         )
@@ -218,21 +220,25 @@ class ReviewerAgent:
                         "truncated": str(truncated).lower(),
                     }
                 )
-        if len(findings) < len(affected_stages):
+        if len(findings) < len(affected_stages) and self._last_review_error is None:
             self._mark_incomplete("Reviewer did not process every affected stage")
         return fixed_modules
 
     def _affected_stages(
         self, modules: dict[str, str], validation: ValidationResult
     ) -> list[str]:
-        """Select mentioned stages, or all when attribution is unknown."""
+        """Select stages named in errors, or all when attribution is unknown."""
         diagnostics = " ".join(
-            (validation.lint_output, validation.type_output, validation.test_output)
+            (
+                validation.lint_output,
+                validation.type_output,
+                _without_coverage_report(validation.test_output),
+            )
         ).lower()
         affected = [
             stage
             for stage in modules
-            if stage.lower() in diagnostics or f"test_{stage.lower()}" in diagnostics
+            if _stage_named_in_diagnostics(stage, diagnostics)
         ]
         return affected or list(modules)
 
@@ -312,3 +318,25 @@ class ReviewerAgent:
         }.issubset(parsed):
             self._last_review_incomplete = True
             self._last_review_error = "consolidation: invalid reviewer response"
+
+
+def _without_coverage_report(test_output: str) -> str:
+    """Drop pytest-cov tables so they do not mark every stage as affected."""
+    lower = test_output.lower()
+    cut = len(test_output)
+    for marker in ("tests coverage", "coverage: platform", "----- coverage"):
+        idx = lower.find(marker)
+        if idx != -1:
+            cut = min(cut, idx)
+    return test_output[:cut]
+
+
+def _stage_named_in_diagnostics(stage: str, diagnostics: str) -> bool:
+    """True when a diagnostic path names the stage module or its tests."""
+    stage_l = stage.lower()
+    return (
+        f"test_{stage_l}.py" in diagnostics
+        or f"/{stage_l}.py" in diagnostics
+        or f" {stage_l}.py" in diagnostics
+        or diagnostics.startswith(f"{stage_l}.py")
+    )

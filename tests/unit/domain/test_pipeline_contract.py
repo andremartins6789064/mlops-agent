@@ -63,6 +63,8 @@ def test_prompt_and_entrypoint_share_metric_and_signatures() -> None:
     assert "load_data()" in prompt
     assert "evaluate_model(test_labels, predictions)" in prompt
     assert "must not require a path" in prompt
+    assert "from collections.abc import Mapping, Sequence" in source
+    assert "split_data must return four values" in source
 
 
 def test_groq_like_dataframe_decomposition_is_reported_not_raised() -> None:
@@ -107,3 +109,57 @@ def test_entrypoint_from_contract_runs_conforming_modules(tmp_path: Path) -> Non
     )
     assert completed.returncode == 0
     assert f"{PRIMARY_METRIC_NAME}=0.000000000000" in completed.stdout
+
+
+def test_entrypoint_accepts_split_data_list_of_four(tmp_path: Path) -> None:
+    modules = {
+        **_CONFORMING_MODULES,
+        "feature_engineering": (
+            "def load_data() -> tuple[list[int], list[int]]:\n"
+            "    return [1, 2], [2, 4]\n\n"
+            "def split_data(features: list[int], labels: list[int])"
+            " -> list[list[int]]:\n"
+            "    return [features, features, labels, labels]\n"
+        ),
+    }
+    writer = FileSystemOutputWriter()
+    root = tmp_path / "project"
+    writer.write_stage_modules(project_root=str(root), generated_modules=modules)
+    writer.write_entrypoint(project_root=str(root))
+
+    completed = subprocess.run(
+        [sys.executable, "src/main.py"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert f"{PRIMARY_METRIC_NAME}=0.000000000000" in completed.stdout
+
+
+def test_entrypoint_rejects_split_data_with_wrong_length(tmp_path: Path) -> None:
+    modules = {
+        **_CONFORMING_MODULES,
+        "feature_engineering": (
+            "def load_data() -> tuple[list[int], list[int]]:\n"
+            "    return [1, 2], [2, 4]\n\n"
+            "def split_data(features: list[int], labels: list[int])"
+            " -> list[list[int]]:\n"
+            "    return [features, labels]\n"
+        ),
+    }
+    writer = FileSystemOutputWriter()
+    root = tmp_path / "project"
+    writer.write_stage_modules(project_root=str(root), generated_modules=modules)
+    writer.write_entrypoint(project_root=str(root))
+
+    completed = subprocess.run(
+        [sys.executable, "src/main.py"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert "split_data must return four values" in completed.stderr
