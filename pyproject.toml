@@ -39,6 +39,10 @@ markers = [
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+exclude = [
+    "docs/experiments/runs_matriz_custo_zero_junior",
+    "docs/experiments/runs_matriz_custo_zero_senior",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
@@ -51,4 +55,4 @@ select = ["E", "F", "I", "N", "W", "UP"]
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
-exclude = "^output/"
+exclude = "^output/|^docs/experiments/runs_matriz"

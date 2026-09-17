@@ -1,0 +1,18 @@
+notebook,model,provider,repetition,duration_seconds,equivalence_status,original_metric,generated_metric,equivalence_error,stage_origins,fallback_stages,contract_status,contract_error,review_iterations,review_status,review_error,coverage,lint_errors,type_errors,mutation_status,mutation_score,mutation_survivors,empty_functions,error
+notebooks/senior_regression.ipynb,openai/gpt-oss-20b,groq,1,131.034,nao_executavel,0.011202345146,,Pipeline exited with status 1.,evaluation:llm;feature_engineering:llm;inference:llm;training:template,training,nao_conforme,"feature_engineering.prepare_features: expected 2 required argument(s) ('features', 'labels'), found 1",,desativada,,,,,suite_invalida,,,0,"baseline test suite failed with status 2: ==================================== ERRORS ====================================
+_ ERROR collecting docs/experiments/runs_matriz_custo_zero_senior/senior_regression-groq-openai_gpt_oss_20b-run1/tests/test_feature_engineering.py _
+ImportError while importing test module '/home/andre/Documents/projetos/mlops-agent/docs/experiments/runs_matriz_custo_zero_senior/senior_regression-groq-openai_gpt_oss_20b-run1/tests/test_feature_engineering.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/andre/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_feature_engineering.py:7: in <module>
+    import feature_engineering as stage_module
+src/feature_engineering.py:6: in <module>
+    from sklearn.model_selection import train_test_split
+E   ModuleNotFoundError: No module named 'sklearn'
+=========================== short test summary info ============================
+ERROR tests/test_feature_engineering.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.91s"

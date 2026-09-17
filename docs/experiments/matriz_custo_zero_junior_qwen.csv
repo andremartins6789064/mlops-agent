@@ -1,0 +1,97 @@
+notebook,model,provider,repetition,duration_seconds,equivalence_status,original_metric,generated_metric,equivalence_error,stage_origins,fallback_stages,contract_status,contract_error,review_iterations,review_status,review_error,coverage,lint_errors,type_errors,mutation_status,mutation_score,mutation_survivors,empty_functions,error
+notebooks/junior_regression.ipynb,qwen2.5-coder:3b,ollama,1,161.814,nao_executavel,0.011202345146,,Pipeline exited with status 1.,evaluation:llm;feature_engineering:llm;inference:llm;training:llm,,nao_conforme,evaluation.evaluate_model: missing function,,desativada,,,,,suite_invalida,,,1,"baseline test suite failed with status 1: FF..FFFFF
+ERROR: Coverage failure: total of 33 is less than fail-under=80
+                                                                         [100%]
+=================================== FAILURES ===================================
+_____________________________ test_evaluate_model ______________________________
+
+    def test_evaluate_model():
+        # Arrange
+>       test_labels = np.array([2.5, 4.1, 3.8])
+                      ^^
+E       NameError: name 'np' is not defined
+
+tests/test_evaluation.py:8: NameError
+__________________________ test_build_metrics_report ___________________________
+
+    def test_build_metrics_report():
+        # Arrange
+        final_mse = 0.09090909090909092
+
+        # Act
+>       metrics_report = Evaluation.build_metrics_report(final_mse)
+                         ^^^^^^^^^^
+E       NameError: name 'Evaluation' is not defined
+
+tests/test_evaluation.py:22: NameError
+________________________________ test_load_data ________________________________
+
+    def test_load_data():
+>       data, labels = load_data()
+                       ^^^^^^^^^
+E       NameError: name 'load_data' is not defined
+
+tests/test_training.py:8: NameError
+_____________________________ test_load_data_file ______________________________
+
+    def test_load_data_file():
+        path = 'path_to_dataset.csv'
+        with open(path, 'w') as file:
+            file.write('9.4,-21\n')
+            file.write('1.3,-50\n')
+
+>       data, labels = load_data(path)
+                       ^^^^^^^^^
+E       NameError: name 'load_data' is not defined
+
+tests/test_training.py:20: NameError
+__________________________ test_apply_transformation ___________________________
+
+    def test_apply_transformation():
+        features = [9.4, 1.3, 3.6, 8.9, 0.0]
+>       transformed_features = apply_transformation(features)
+                               ^^^^^^^^^^^^^^^^^^^^
+E       NameError: name 'apply_transformation' is not defined
+
+tests/test_training.py:26: NameError
+_______________________________ test_train_model _______________________________
+
+    def test_train_model():
+        train_x = [9.4 / 3.0, 1.3 / 3.0, 3.6 / 3.0, 8.9 / 3.0, 0.0]
+        train_labels = [-21, -50, -13, -13, 37]
+>       trained_model_artifact, mse = train_model(train_x, train_labels)
+                                      ^^^^^^^^^^^
+E       NameError: name 'train_model' is not defined
+
+tests/test_training.py:33: NameError
+_______________________________ test_save_model ________________________________
+
+    def test_save_model():
+        model_artifact = ""train""
+        file_path = ""path_to_model.pickle""
+>       save_model(model_artifact, file_path)
+        ^^^^^^^^^^
+E       NameError: name 'save_model' is not defined
+
+tests/test_training.py:41: NameError
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.15-final-0 _______________
+
+Name                         Stmts   Miss  Cover   Missing
+----------------------------------------------------------
+src/evaluation.py               17     17     0%   1-46
+src/feature_engineering.py      25      6    76%   23, 58, 72, 92-95
+src/inference.py                 7      1    86%   42
+src/training.py                 27     27     0%   1-47
+----------------------------------------------------------
+TOTAL                           76     51    33%
+FAIL Required test coverage of 80% not reached. Total coverage: 32.89%
+=========================== short test summary info ============================
+FAILED tests/test_evaluation.py::test_evaluate_model - NameError: name 'np' i...
+FAILED tests/test_evaluation.py::test_build_metrics_report - NameError: name ...
+FAILED tests/test_training.py::test_load_data - NameError: name 'load_data' i...
+FAILED tests/test_training.py::test_load_data_file - NameError: name 'load_da...
+FAILED tests/test_training.py::test_apply_transformation - NameError: name 'a...
+FAILED tests/test_training.py::test_train_model - NameError: name 'train_mode...
+FAILED tests/test_training.py::test_save_model - NameError: name 'save_model'...
+7 failed, 2 passed in 0.73s"

@@ -4,7 +4,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
+        exclude: ^docs/experiments/runs_matriz
       - id: ruff-format
+        exclude: ^docs/experiments/runs_matriz
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
@@ -13,11 +15,14 @@ repos:
         additional_dependencies:
           - pydantic
           - pydantic-settings
+        exclude: ^docs/experiments/runs_matriz
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^docs/experiments/runs_matriz
       - id: end-of-file-fixer
+        exclude: ^docs/experiments/runs_matriz
       - id: check-yaml
       - id: check-added-large-files
